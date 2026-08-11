@@ -91,7 +91,7 @@ hadjchanges/
 │       └── reporting/     🟢 volumes, commissions, séries et répartitions + export comptable
 │
 ├── scripts-verif/
-│   └── api-check.mjs      ✅ vérification exécutable de bout en bout (247 contrôles)
+│   └── api-check.mjs      ✅ vérification exécutable de bout en bout (261 contrôles)
 │
 ├── admin/                 Next.js 15 (App Router)
 │   └── src/
@@ -102,8 +102,8 @@ hadjchanges/
 │       ├── components/charts.tsx 📈 AreaChart · BarList · Donut — SVG maison, animés une fois
 │       └── app/
 │           ├── login         🟢 connexion équipe
-│           └── (dash)/       🟢 kyc, recus, transactions, caisses, rapports, clients,
-│                             conformite, audit · ⚪ taux, agences, equipe
+│           └── (dash)/       🟢 les 10 modules : kyc, recus, transactions, taux, clients,
+│                             caisses, agences, rapports, equipe, conformite, audit
 │
 └── mobile/                📱 React Expo 57
     ├── app.json           ⚙️ Config Expo (safe-area, back gesture off)
@@ -217,17 +217,17 @@ n'y a qu'un parcours, une pile suffit — une barre à un seul onglet ne sert pe
 |---|---|---|
 | Connexion 🟢 | `/login` | équipe (2FA à venir) |
 | Vue d'ensemble | `/(dash)` | volumes, commissions, top devises, alertes |
-| Taux | `/(dash)/taux` | publier un taux, historique, marge par paire, alerte de fraîcheur |
+| Taux 🟢 | `/(dash)/taux` | publier (pré-rempli sur le taux en vigueur), marge calculée en direct, garde-fou d’inversion, historique |
 | Reçus | `/(dash)/recus` | **file de validation** des preuves de paiement |
 | KYC 🟢 | `/(dash)/kyc` | **file de validation** des identités, pièce affichée après contrôle des droits |
 | Reçus 🟢 | `/(dash)/recus` | **file de contrôle** : montant attendu en évidence, valider exécute le change |
 | Transactions 🟢 | `/(dash)/transactions` | liste filtrable, exports Excel/CSV, justificatif PDF |
 | Transactions | `/(dash)/transactions` | liste temps réel, filtres, détail, export |
 | Clients 🟢 | `/(dash)/clients` | recherche, jauges de plafond, blocage motivé |
-| Agences | `/(dash)/agences` | agences + affectation des opérateurs |
+| Agences 🟢 | `/(dash)/agences` | agence + **son encaisse** + **ses opérateurs**, réunis sur un écran |
 | Caisses 🟢 | `/(dash)/caisses` | soldes par devise, mouvementer, **clôture par comptage** avec écart en direct |
 | Rapports 🟢 | `/(dash)/rapports` | bandeau dégradé, KPI soulevés, courbe tracée, anneau, export |
-| Équipe | `/(dash)/equipe` | comptes internes et rôles [super_admin] |
+| Équipe 🟢 | `/(dash)/equipe` | création avec mot de passe provisoire affiché une fois, rôles, suspension |
 | Audit | `/(dash)/audit` | journal d'activité |
 
 ---

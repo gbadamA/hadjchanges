@@ -239,6 +239,20 @@ export interface Agency {
   code: string;
   name: string;
   city: string;
+  address?: string | null;
+  phone?: string | null;
+  active?: boolean;
+}
+
+export interface StaffMember {
+  id: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string | null;
+  role: Role;
+  agencyId: string | null;
+  blocked: boolean;
 }
 
 export interface CashBalance {
@@ -420,6 +434,92 @@ export const clients = {
 export const audit = {
   list: (token: string, params: Record<string, string> = {}) =>
     apiFetch<AuditEntry[]>(`/audit?${new URLSearchParams(params).toString()}`, { token }),
+};
+
+export interface RateRow {
+  currency: { code: string; name: string; symbol: string; decimals: number };
+  buyRate: string;
+  sellRate: string;
+  commissionPct: string;
+  trend: 'up' | 'down' | 'flat';
+  trendPct: string;
+  effectiveFrom: string;
+  stale: boolean;
+  agencyId: string | null;
+}
+
+export interface RateVersion {
+  id: string;
+  buyRate: string;
+  sellRate: string;
+  commissionPct: string;
+  effectiveFrom: string;
+  agencyId: string | null;
+  agency: { name: string } | null;
+  createdBy: { firstName: string; lastName: string } | null;
+}
+
+export interface CurrencyRow {
+  id: string;
+  code: string;
+  name: string;
+  symbol: string;
+  decimals: number;
+  isBase: boolean;
+  active: boolean;
+}
+
+export const rates = {
+  board: (agencyId?: string) =>
+    apiFetch<RateRow[]>(`/rates${agencyId ? `?agencyId=${agencyId}` : ''}`),
+  history: (code: string, token: string, take = 30) =>
+    apiFetch<RateVersion[]>(`/rates/${code}/history?take=${take}`, { token }),
+  publish: (
+    body: {
+      currencyCode: string;
+      buyRate: number;
+      sellRate: number;
+      commissionPct: number;
+      agencyId?: string | null;
+    },
+    token: string,
+  ) => apiFetch<RateVersion>('/rates', { method: 'POST', body, token }),
+  currencies: () => apiFetch<CurrencyRow[]>('/currencies'),
+};
+
+export const agencies = {
+  list: () => apiFetch<Agency[]>('/agencies'),
+  create: (
+    body: { code: string; name: string; city: string; address?: string; phone?: string },
+    token: string,
+  ) => apiFetch<Agency>('/agencies', { method: 'POST', body, token }),
+  update: (id: string, body: Partial<Agency>, token: string) =>
+    apiFetch<Agency>(`/agencies/${id}`, { method: 'PATCH', body, token }),
+};
+
+export const staff = {
+  list: (token: string) => apiFetch<StaffMember[]>('/staff', { token }),
+  create: (
+    body: {
+      firstName: string;
+      lastName: string;
+      phone: string;
+      email?: string;
+      role: Role;
+      agencyId?: string | null;
+    },
+    token: string,
+  ) => apiFetch<StaffMember & { temporaryPassword: string }>('/staff', { method: 'POST', body, token }),
+  changeRole: (id: string, role: Role, token: string) =>
+    apiFetch<StaffMember>(`/staff/${id}/role`, { method: 'PATCH', body: { role }, token }),
+  assignAgency: (id: string, agencyId: string | null, token: string) =>
+    apiFetch<StaffMember>(`/staff/${id}/agency`, { method: 'PATCH', body: { agencyId }, token }),
+  setAccess: (id: string, suspended: boolean, reason: string | undefined, token: string) =>
+    apiFetch<StaffMember>(`/staff/${id}/access`, {
+      method: 'POST',
+      body: { suspended, reason },
+      token,
+    }),
 };
 
 export const kyc = {

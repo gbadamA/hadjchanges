@@ -1601,6 +1601,94 @@ async function main() {
     }
   }
 
+  // ------------------------------------------------------- gestion d'équipe --
+  section('Création et droits des comptes internes');
+  {
+    const superAdmin = await login({ identifier: '0700000001', password: ADMIN.password });
+    const suffix = Date.now().toString().slice(-6);
+    const phone = `0788${suffix}`;
+
+    // Créer un compte interne est réservé au SUPER-administrateur.
+    const parAdmin = await call('POST', '/staff', {
+      token: admin.accessToken,
+      body: { firstName: 'Test', lastName: 'Refuse', phone, role: 'OPERATEUR' },
+    });
+    check('un administrateur ne crée pas de compte interne (403)', parAdmin.status === 403, `reçu ${parAdmin.status}`);
+
+    const cree = await call('POST', '/staff', {
+      token: superAdmin.accessToken,
+      body: { firstName: 'Konan', lastName: 'Verif', phone, role: 'OPERATEUR' },
+    });
+    check('le super-administrateur crée un compte (201)', cree.status === 201, `reçu ${cree.status}`);
+    check('le rôle demandé est appliqué', cree.data?.role === 'OPERATEUR');
+
+    // Le mot de passe provisoire doit RÉELLEMENT ouvrir la session : le rendre
+    // sans qu'il fonctionne serait le pire des deux mondes.
+    const motDePasse = cree.data?.temporaryPassword ?? '';
+    check('un mot de passe provisoire est rendu', motDePasse.length >= 12, `${motDePasse.length} caractères`);
+    const ouverture = await call('POST', '/auth/login', { body: { identifier: phone, password: motDePasse } });
+    check('ce mot de passe ouvre bien la session (200)', ouverture.status === 200, `reçu ${ouverture.status}`);
+
+    const doublon = await call('POST', '/staff', {
+      token: superAdmin.accessToken,
+      body: { firstName: 'Autre', lastName: 'Personne', phone, role: 'ADMIN' },
+    });
+    check('un téléphone déjà pris est refusé (409)', doublon.status === 409, `reçu ${doublon.status}`);
+
+    // Garde-fous : on ne se retire pas ses propres droits.
+    const autoRole = await call('PATCH', `/staff/${superAdmin.user.id}/role`, {
+      token: superAdmin.accessToken,
+      body: { role: 'OPERATEUR' },
+    });
+    check('changer son propre rôle est refusé (409)', autoRole.status === 409, `reçu ${autoRole.status}`);
+    const autoSuspension = await call('POST', `/staff/${superAdmin.user.id}/access`, {
+      token: superAdmin.accessToken,
+      body: { suspended: true, reason: 'test' },
+    });
+    check('se suspendre soi-même est refusé (409)', autoSuspension.status === 409, `reçu ${autoSuspension.status}`);
+
+    // Suspension d'un agent : l'accès tombe immédiatement.
+    const suspendu = await call('POST', `/staff/${cree.data.id}/access`, {
+      token: superAdmin.accessToken,
+      body: { suspended: true, reason: 'Fin de mission.' },
+    });
+    check('un agent se suspend (201)', suspendu.status === 201, `reçu ${suspendu.status}`);
+    const bloque = await call('GET', '/users/me', { token: ouverture.data.accessToken });
+    check(
+      'sa session en cours ne passe plus (403)',
+      bloque.status === 403,
+      `reçu ${bloque.status}`,
+    );
+
+    await call('POST', `/staff/${cree.data.id}/access`, {
+      token: superAdmin.accessToken,
+      body: { suspended: false },
+    });
+    const retabli = await call('GET', '/users/me', { token: ouverture.data.accessToken });
+    check('le rétablissement rouvre l’accès (200)', retabli.status === 200, `reçu ${retabli.status}`);
+
+    const promu = await call('PATCH', `/staff/${cree.data.id}/role`, {
+      token: superAdmin.accessToken,
+      body: { role: 'ADMIN' },
+    });
+    check('un opérateur peut être promu administrateur', promu.data?.role === 'ADMIN');
+    check(
+      'promu administrateur, il perd son rattachement d’agence',
+      promu.data?.agencyId === null,
+      String(promu.data?.agencyId),
+    );
+
+    const trace = await call('GET', '/audit?entity=User&take=30', { token: admin.accessToken });
+    const actions = (trace.data ?? []).map((row) => row.action);
+    check(
+      'création, suspension et changement de rôle sont tracés',
+      actions.includes('staff.create') &&
+        actions.includes('staff.suspend') &&
+        actions.includes('staff.change_role'),
+      actions.slice(0, 5).join(', '),
+    );
+  }
+
   // ------------------------------------------------------------------ bilan --
   console.log(`\n${'='.repeat(60)}`);
   console.log(`${passed} vérifications passées · ${failed} échouées · ${skipped} ignorées`);

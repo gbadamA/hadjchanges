@@ -90,11 +90,10 @@ Comptes du seed : admin `0700000002` / `Admin@2026`, client vérifié `070900000
 **La roadmap est terminée** : les phases 1 à 3 du cahier des charges sont couvertes.
 - **Mobile** (Expo SDK 57) : taux poussés en direct, simulateur, verrou, comptes, vérification
   d’identité, opération de change complète et suivi.
-- **Dashboard** : identités, reçus, transactions, caisses, rapports, clients, conformité, audit.
-  Les modules à venir
-  apparaissent grisés dans le menu tant qu’ils n’existent pas.
+- **Dashboard** : les 10 modules sont en place — identités, reçus, transactions, taux, clients,
+  caisses, agences, rapports, équipe, conformité, audit.
 
-Vérifié : `api-check.mjs` **247/247**, `tsc --noEmit` 0 erreur sur les trois briques, et la boucle
+Vérifié : `api-check.mjs` **261/261**, `tsc --noEmit` 0 erreur sur les trois briques, et la boucle
 complète constatée dans le navigateur — simulation → verrou → opération → reçu → validation au
 dashboard → change exécuté → fonds disponibles → suivi horodaté côté client.
 

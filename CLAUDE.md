@@ -110,6 +110,14 @@ Les transitions invalides sont refusées **côté service** par une state machin
 
 ## 6. Décisions actées
 
+- ✅ **Un mot de passe de compte interne est TIRÉ PAR LE SERVEUR et rendu une seule fois**, jamais
+  choisi par l'administrateur — sinon c'est le même « Passer123 » sur tous les postes de l'agence.
+  L'alphabet exclut `l/1/O/0`, qui se confondent quand on le dicte au téléphone.
+- ✅ **On ne peut ni changer son propre rôle, ni suspendre son propre accès.** Le seul compte capable
+  de rendre les droits ne doit pas pouvoir s'enfermer dehors.
+- ✅ **Le dashboard garde aussi les ROUTES, pas seulement le menu.** Cacher une entrée ne suffit
+  pas : l'URL reste tapable et la page s'ouvrirait avec des boutons qui échoueront tous en 403. La
+  vraie sécurité reste l'API ; la garde évite juste de laisser quelqu'un s'escrimer.
 - ✅ **Les transports de notification sont des ports** (`notifications/transports/`). Le métier
   appelle `notify()` sans savoir par où le message partira ; ajouter un fournisseur ne touche aucun
   appelant. **Un transport ne lève jamais** : il rend un résultat, y compris en échec.
@@ -353,6 +361,11 @@ d'où la comparaison par code de caractère.
 ⚠️ **`content-disposition` doit être dans `exposedHeaders` de la configuration CORS.** Sans lui, le
 navigateur cache l'en-tête aux requêtes inter-origines et le dashboard enregistrait les exports
 sous un nom générique au lieu du nom daté envoyé par le serveur.
+
+⚠️ **`PasswordService` vit dans son propre module** (`auth/password.module.ts`). Deux modules en ont
+besoin — l'authentification et la gestion d'équipe — et sans cette séparation `UsersModule` devrait
+importer `AuthModule`, qui importe déjà `UsersModule` : un cycle que seul un `forwardRef`
+résoudrait, c'est-à-dire un pansement sur une dépendance mal placée.
 
 ⚠️ **Un jeton push refusé par Expo (`DeviceNotRegistered`) est supprimé immédiatement.** Le garder
 ferait échouer chaque envoi suivant, et la file finirait par ne plus rien livrer.

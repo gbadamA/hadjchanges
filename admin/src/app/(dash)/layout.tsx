@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, type ReactNode } from 'react';
 import { useAuth } from '../../lib/auth';
-import { navigationFor, ROLE_LABEL } from '../../lib/navigation';
+import { NAVIGATION, navigationFor, ROLE_LABEL } from '../../lib/navigation';
 
 export default function DashLayout({ children }: { children: ReactNode }) {
   const { user, booting, signOut } = useAuth();
@@ -27,6 +27,17 @@ export default function DashLayout({ children }: { children: ReactNode }) {
   }
 
   const items = navigationFor(user.role);
+
+  /**
+   * Garde de ROUTE, en plus du filtrage du menu.
+   *
+   * Cacher une entrée ne suffit pas : l'URL reste tapable, et la page
+   * s'ouvrirait avec des boutons qui échoueront tous en 403 après le clic.
+   * L'API reste la vraie sécurité — ceci évite juste de laisser quelqu'un
+   * s'escrimer sur une page qui ne lui répondra jamais.
+   */
+  const target = NAVIGATION.find((item) => pathname.startsWith(item.href));
+  const forbidden = target !== undefined && !target.roles.includes(user.role);
 
   return (
     <div className="flex min-h-screen">
@@ -78,7 +89,23 @@ export default function DashLayout({ children }: { children: ReactNode }) {
       </aside>
 
       <main className="flex-1 overflow-x-hidden bg-light-bg p-6 dark:bg-dark-bg lg:p-10">
-        {children}
+        {forbidden ? (
+          <div className="surface mx-auto max-w-lg p-8 text-center">
+            <h1 className="font-display text-h2">Accès réservé</h1>
+            <p className="mt-2 text-body text-light-muted dark:text-dark-muted">
+              Le module « {target?.label} » n’est pas ouvert au rôle{' '}
+              {ROLE_LABEL[user.role].toLowerCase()}. Demandez-le au super-administrateur.
+            </p>
+            <Link
+              href={items.find((item) => item.ready)?.href ?? '/kyc'}
+              className="lift mt-5 inline-block rounded-sm bg-primary px-5 py-2.5 font-medium text-white"
+            >
+              Revenir à mon pilotage
+            </Link>
+          </div>
+        ) : (
+          children
+        )}
       </main>
     </div>
   );
