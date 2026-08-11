@@ -1469,6 +1469,138 @@ async function main() {
     );
   }
 
+  // --------------------------------------------------------- notifications --
+  section('Notifications et alertes de taux');
+  {
+    const client = await login(CLIENT);
+
+    const canaux = await call('GET', '/notifications/channels', { token: admin.accessToken });
+    check('les canaux disponibles sont listés (200)', canaux.status === 200, `reçu ${canaux.status}`);
+    const parCanal = Object.fromEntries((canaux.data ?? []).map((row) => [row.channel, row.configured]));
+    check('le push et l’email sont branchés', parCanal.PUSH === true && parCanal.EMAIL === true);
+    // Sans identifiants, un transport payant doit se déclarer NON configuré —
+    // faire croire à un envoi serait pire que ne rien envoyer.
+    check(
+      'WhatsApp et SMS s’annoncent non configurés faute d’identifiants',
+      parCanal.WHATSAPP === false && parCanal.SMS === false,
+      JSON.stringify(parCanal),
+    );
+    const parClient = await call('GET', '/notifications/channels', { token: client.accessToken });
+    check('un client ne voit pas cette configuration (403)', parClient.status === 403, `reçu ${parClient.status}`);
+
+    // Enregistrement d'appareil : idempotent, une réinstallation ne double pas.
+    const jeton = 'ExponentPushToken[verification-hadjchanges]';
+    const premier = await call('POST', '/notifications/devices', {
+      token: client.accessToken,
+      body: { token: jeton, platform: 'android' },
+    });
+    const second = await call('POST', '/notifications/devices', {
+      token: client.accessToken,
+      body: { token: jeton, platform: 'android' },
+    });
+    check('un appareil s’enregistre (200)', premier.status === 200, `reçu ${premier.status}`);
+    check('le réenregistrer ne crée pas de doublon (200)', second.status === 200, `reçu ${second.status}`);
+    const mauvais = await call('POST', '/notifications/devices', {
+      token: client.accessToken,
+      body: { token: 'court', platform: 'android' },
+    });
+    check('un jeton manifestement invalide est refusé (400)', mauvais.status === 400, `reçu ${mauvais.status}`);
+
+    // Alerte de taux : on surveille l'euro sous un seuil très au-dessus du
+    // cours, pour que la prochaine publication le déclenche à coup sûr.
+    const board = (await call('GET', '/rates')).data ?? [];
+    const eur = board.find((row) => row.currency.code === 'EUR');
+    const seuil = Number(eur.sellRate) + 50;
+
+    const posee = await call('POST', '/notifications/rate-alerts', {
+      token: client.accessToken,
+      body: { currencyCode: 'EUR', thresholdRate: seuil },
+    });
+    check('une alerte de taux se pose (201)', posee.status === 201, `reçu ${posee.status}`);
+    check('elle est active et jamais déclenchée', posee.data?.active === true && posee.data?.triggeredAt === null);
+
+    const doublon = await call('POST', '/notifications/rate-alerts', {
+      token: client.accessToken,
+      body: { currencyCode: 'EUR', thresholdRate: seuil + 1 },
+    });
+    const mesAlertes = await call('GET', '/notifications/rate-alerts', { token: client.accessToken });
+    check('reposer la même devise met à jour au lieu d’empiler', doublon.status === 201);
+    check(
+      'une seule alerte par devise',
+      (mesAlertes.data ?? []).filter((row) => row.currency.code === 'EUR').length === 1,
+      `${mesAlertes.data?.length} alertes`,
+    );
+
+    const refusXof = await call('POST', '/notifications/rate-alerts', {
+      token: client.accessToken,
+      body: { currencyCode: 'XOF', thresholdRate: 1 },
+    });
+    check('surveiller la devise de référence est refusé (404)', refusXof.status === 404, `reçu ${refusXof.status}`);
+
+    // Publication sous le seuil → l'alerte doit partir.
+    const avant = await call('GET', '/notifications', { token: client.accessToken });
+    await call('POST', '/rates', {
+      token: admin.accessToken,
+      body: {
+        currencyCode: 'EUR',
+        buyRate: Number(eur.buyRate),
+        sellRate: Number(eur.sellRate),
+        commissionPct: Number(eur.commissionPct),
+      },
+    });
+
+    const apres = await call('GET', '/notifications', { token: client.accessToken });
+    check(
+      'publier un taux sous le seuil notifie le client',
+      (apres.data ?? []).length > (avant.data ?? []).length,
+      `${avant.data?.length} → ${apres.data?.length}`,
+    );
+    const message = (apres.data ?? [])[0];
+    check('la notification nomme la devise et le seuil', /EUR/.test(String(message?.title)));
+    check('elle renvoie vers le simulateur', message?.deepLink === '/simulateur');
+
+    // Désarmement : une alerte déclenchée ne se répète pas à chaque publication.
+    const apresDeclenchement = await call('GET', '/notifications/rate-alerts', { token: client.accessToken });
+    const desarmee = (apresDeclenchement.data ?? []).find((row) => row.currency.code === 'EUR');
+    check(
+      'l’alerte déclenchée est désarmée, pas répétée',
+      desarmee?.active === false && desarmee?.triggeredAt !== null,
+      JSON.stringify(desarmee),
+    );
+
+    const compteur = await call('GET', '/notifications/unread-count', { token: client.accessToken });
+    check('les non-lues sont comptées', Number(compteur.data?.unread) > 0, JSON.stringify(compteur.data));
+    const lues = await call('POST', '/notifications/read', { token: client.accessToken });
+    check('tout marquer lu fonctionne (200)', lues.status === 200 && Number(lues.data?.marked) > 0);
+    const apresLecture = await call('GET', '/notifications/unread-count', { token: client.accessToken });
+    check('le compteur retombe à zéro', Number(apresLecture.data?.unread) === 0);
+
+    const suppression = await call('DELETE', `/notifications/rate-alerts/${desarmee.id}`, {
+      token: client.accessToken,
+    });
+    check('une alerte se retire (200)', suppression.status === 200, `reçu ${suppression.status}`);
+
+    // Le courriel part-il VRAIMENT ? Mailpit reçoit tout en développement.
+    try {
+      const boite = await fetch('http://localhost:8036/api/v1/messages?limit=20');
+      if (!boite.ok) throw new Error(String(boite.status));
+      const { messages = [] } = await boite.json();
+      const recu = messages.find((mail) => /EUR/.test(mail.Subject ?? ''));
+      check(
+        'le courriel d’alerte est réellement remis (Mailpit)',
+        recu !== undefined,
+        `${messages.length} message(s) en boîte`,
+      );
+      check(
+        'il part de l’adresse du bureau',
+        /hadjchanges/i.test(recu?.From?.Address ?? ''),
+        String(recu?.From?.Address),
+      );
+    } catch (error) {
+      skip('remise du courriel', `Mailpit injoignable sur 8036 (${String(error)})`);
+    }
+  }
+
   // ------------------------------------------------------------------ bilan --
   console.log(`\n${'='.repeat(60)}`);
   console.log(`${passed} vérifications passées · ${failed} échouées · ${skipped} ignorées`);

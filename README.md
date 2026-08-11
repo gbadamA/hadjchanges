@@ -84,15 +84,20 @@ Comptes du seed : admin `0700000002` / `Admin@2026`, client vérifié `070900000
   graphiques SVG maison, export comptable CSV.
 - **Brique 8 — conformité** 🟢 vigilance LCB-FT (seuil, fractionnement, compte récent, rythme),
   plafonds et blocage par client, journal d’audit consultable.
+- **Brique 9 — notifications** 🟢 Expo Push et courriel branchés, WhatsApp/SMS prêts (clés à
+  renseigner), alertes de taux favorable côté client.
+
+**La roadmap est terminée** : les phases 1 à 3 du cahier des charges sont couvertes.
 - **Mobile** (Expo SDK 57) : taux poussés en direct, simulateur, verrou, comptes, vérification
   d’identité, opération de change complète et suivi.
 - **Dashboard** : identités, reçus, transactions, caisses, rapports, clients, conformité, audit.
   Les modules à venir
   apparaissent grisés dans le menu tant qu’ils n’existent pas.
 
-Vérifié : `api-check.mjs` **225/225**, `tsc --noEmit` 0 erreur sur les trois briques, et la boucle
+Vérifié : `api-check.mjs` **247/247**, `tsc --noEmit` 0 erreur sur les trois briques, et la boucle
 complète constatée dans le navigateur — simulation → verrou → opération → reçu → validation au
 dashboard → change exécuté → fonds disponibles → suivi horodaté côté client.
 
-Suite : brique 9 (notifications — Expo Push, WhatsApp/SMS, alertes de taux favorable).
-Roadmap complète au §9 de [CLAUDE.md](CLAUDE.md).
+Reste à faire avant mise en ligne : renseigner les clés WhatsApp Business et Twilio, remplacer les
+taux du seed par les taux réels de l’exploitant, basculer le stockage de fichiers sur S3, et
+déployer. Roadmap complète au §9 de [CLAUDE.md](CLAUDE.md).

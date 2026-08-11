@@ -2,6 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Link, useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { api } from '../api';
 import { useAuth } from '../auth';
 import { RateCard } from '../components';
 import { KYC_LABEL } from '../models';
@@ -18,8 +20,21 @@ import { useRates } from '../useRates';
  */
 export default function Accueil(): ReactNode {
   const { rows, loading, error, justUpdated, reload } = useRates();
-  const { profile } = useAuth();
+  const { profile, accessToken } = useAuth();
+  const [unread, setUnread] = useState(0);
   const router = useRouter();
+
+  // Pastille de notifications : muette en cas d'échec, ce n'est qu'un indicateur.
+  useEffect(() => {
+    if (!accessToken) {
+      setUnread(0);
+      return;
+    }
+    api
+      .unreadCount(accessToken)
+      .then((result) => setUnread(result.unread))
+      .catch(() => setUnread(0));
+  }, [accessToken]);
 
   return (
     <Screen>
@@ -51,6 +66,19 @@ export default function Accueil(): ReactNode {
                 <Text style={[T.label, styles.accountText]} numberOfLines={1}>
                   {profile.firstName} · {KYC_LABEL[profile.kycStatus]}
                 </Text>
+              </Pressable>
+            </Link>
+            <Link href="/notifications" asChild>
+              <Pressable style={[styles.account, styles.authButton]}>
+                <Ionicons name="notifications-outline" size={22} color={C.navy} />
+                <Text style={[T.label, styles.accountText]} numberOfLines={1}>
+                  Notifications
+                </Text>
+                {unread > 0 ? (
+                  <View style={styles.dot}>
+                    <Text style={styles.dotText}>{unread > 9 ? '9+' : unread}</Text>
+                  </View>
+                ) : null}
               </Pressable>
             </Link>
             <Link href="/operations" asChild>
@@ -121,4 +149,14 @@ const styles = StyleSheet.create({
     padding: S.md,
   },
   accountText: { flex: 1, color: C.navy },
+  dot: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: C.gold,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 5,
+  },
+  dotText: { ...T.caption, color: C.onGold, fontVariant: ['tabular-nums'] },
 });

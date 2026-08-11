@@ -4,6 +4,7 @@ import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../common/auth-user';
 import { decimalToString, roundRate } from '../common/money';
 import { PrismaService } from '../prisma/prisma.service';
+import { RateAlertsService } from '../notifications/rate-alerts.service';
 import { RatesGateway } from '../realtime/rates.gateway';
 import { SettingsService } from '../settings/settings.service';
 import { RatesRepository } from './rates.repository';
@@ -35,6 +36,7 @@ export class RatesService {
     private readonly settings: SettingsService,
     private readonly audit: AuditService,
     private readonly gateway: RatesGateway,
+    private readonly rateAlerts: RateAlertsService,
   ) {}
 
   /**
@@ -134,6 +136,10 @@ export class RatesService {
     // les téléphones est un taux faux pendant dix minutes.
     const staleBefore = new Date(Date.now() - (await this.settings.rateStaleHours()) * 3_600_000);
     this.gateway.broadcast(this.toRow(currency, created, previous, staleBefore), created.agencyId);
+
+    // Clients qui guettaient ce taux (cahier §3.2). Le service avale ses
+    // erreurs : une alerte ratée ne doit pas annuler une publication de taux.
+    await this.rateAlerts.onRatePublished(created);
 
     return {
       ...created,

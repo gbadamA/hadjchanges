@@ -110,6 +110,18 @@ Les transitions invalides sont refusées **côté service** par une state machin
 
 ## 6. Décisions actées
 
+- ✅ **Les transports de notification sont des ports** (`notifications/transports/`). Le métier
+  appelle `notify()` sans savoir par où le message partira ; ajouter un fournisseur ne touche aucun
+  appelant. **Un transport ne lève jamais** : il rend un résultat, y compris en échec.
+- ✅ **Un transport sans identifiants se déclare NON configuré**, et le service passe au canal
+  suivant. Il ne fait pas semblant d'avoir envoyé : une notification qu'on croit partie est pire
+  qu'une notification manquante. WhatsApp et SMS sont donc muets tant que les clés ne sont pas
+  renseignées — c'est visible sur `GET /notifications/channels`.
+- ✅ **La trace en base est écrite AVANT toute tentative d'envoi** : l'application doit pouvoir
+  afficher le message même si le push échoue.
+- ✅ **Une alerte de taux déclenchée est DÉSARMÉE**, pas répétée. Sans cela, chaque republication
+  sous le seuil renverrait le même message et le client couperait ses notifications au bout de
+  trois. Une seule alerte par devise et par client, aussi.
 - ✅ **La vigilance SIGNALE, elle ne bloque pas.** Un automate qui refuse une opération légitime
   coûte un client ; un automate qui la signale coûte une minute d'examen. Le blocage reste une
   décision humaine, motivée et tracée.
@@ -280,7 +292,7 @@ les deux surfaces doivent se reconnaître au premier coup d'œil. Police Plus Ja
 | 6 | **Caisses** | soldes par devise, mouvements, clôture journalière, affectation des agents | 🟢 |
 | 7 | **Reporting** | volumes, commissions, graphiques SVG maison, export comptable | 🟢 |
 | 8 | **Conformité** | vigilance LCB-FT, plafonds par client, blocage, journal d'audit | 🟢 |
-| 9 | **Notifications** | Expo Push + WhatsApp/SMS + alertes de taux favorable | ⚪ |
+| 9 | **Notifications** | Expo Push + email + WhatsApp/SMS + alertes de taux favorable | 🟢 |
 
 Correspondance cahier §7 : phase 1 = briques 1-5, phase 2 = 6 + 9, phase 3 = 7 + 8.
 
@@ -341,6 +353,14 @@ d'où la comparaison par code de caractère.
 ⚠️ **`content-disposition` doit être dans `exposedHeaders` de la configuration CORS.** Sans lui, le
 navigateur cache l'en-tête aux requêtes inter-origines et le dashboard enregistrait les exports
 sous un nom générique au lieu du nom daté envoyé par le serveur.
+
+⚠️ **Un jeton push refusé par Expo (`DeviceNotRegistered`) est supprimé immédiatement.** Le garder
+ferait échouer chaque envoi suivant, et la file finirait par ne plus rien livrer.
+
+⚠️ **`registerForPush` sort silencieusement sur émulateur** (Expo exige un appareil réel) **et ne
+redemande jamais une permission refusée** : le système ne réaffiche pas la fenêtre, insister ne
+produit qu'une boucle. L'app fonctionne sans push, les notifications restent lisibles dans l'écran
+dédié.
 
 ⚠️ **La série journalière remplit les jours creux** (`generate_series` en SQL). Sans eux, la courbe
 relierait le 3 au 11 en ligne droite et laisserait croire à une activité continue pendant une

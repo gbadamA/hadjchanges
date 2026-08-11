@@ -9,6 +9,29 @@ import type {
   TransactionDirection,
 } from './models';
 
+export interface AppNotification {
+  id: string;
+  title: string;
+  body: string;
+  deepLink: string | null;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export interface RateAlert {
+  id: string;
+  currency: { code: string; symbol: string };
+  thresholdRate: string;
+  active: boolean;
+  triggeredAt: string | null;
+  createdAt: string;
+}
+
+export interface LimitsView {
+  daily: { limitXof: string; usedXof: string; remainingXof: string; inherited: boolean };
+  monthly: { limitXof: string; usedXof: string; remainingXof: string; inherited: boolean };
+}
+
 export interface PublicSettings {
   depositNumbers: Partial<Record<DepositMethod, string>>;
   rateLockMinutes: number;
@@ -230,6 +253,43 @@ export const api = {
 
   refresh: (refreshToken: string): Promise<AuthResponse> =>
     request<AuthResponse>('/auth/refresh', { method: 'POST', body: { refreshToken } }),
+
+  notifications: (token: string): Promise<AppNotification[]> =>
+    request<AppNotification[]>('/notifications', { token }),
+
+  unreadCount: (token: string): Promise<{ unread: number }> =>
+    request<{ unread: number }>('/notifications/unread-count', { token }),
+
+  markNotificationsRead: (token: string): Promise<{ marked: number }> =>
+    request<{ marked: number }>('/notifications/read', { method: 'POST', body: {}, token }),
+
+  registerDevice: (deviceToken: string, platform: string, token: string): Promise<unknown> =>
+    request('/notifications/devices', {
+      method: 'POST',
+      body: { token: deviceToken, platform },
+      token,
+    }),
+
+  forgetDevice: (deviceToken: string, token: string): Promise<unknown> =>
+    request(`/notifications/devices?token=${encodeURIComponent(deviceToken)}`, {
+      method: 'DELETE',
+      token,
+    }),
+
+  rateAlerts: (token: string): Promise<RateAlert[]> =>
+    request<RateAlert[]>('/notifications/rate-alerts', { token }),
+
+  createRateAlert: (currencyCode: string, thresholdRate: number, token: string): Promise<RateAlert> =>
+    request<RateAlert>('/notifications/rate-alerts', {
+      method: 'POST',
+      body: { currencyCode, thresholdRate },
+      token,
+    }),
+
+  removeRateAlert: (id: string, token: string): Promise<unknown> =>
+    request(`/notifications/rate-alerts/${id}`, { method: 'DELETE', token }),
+
+  myLimits: (token: string): Promise<LimitsView> => request<LimitsView>('/compliance/limits/me', { token }),
 
   logout: (refreshToken: string): Promise<void> =>
     request<void>('/auth/logout', { method: 'POST', body: { refreshToken } }),

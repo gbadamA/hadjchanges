@@ -83,7 +83,7 @@ hadjchanges/
 │       ├── realtime/      🟢 passerelle WebSocket `/rates` (diffusion des taux)
 │       ├── kyc/           🟢 dépôt de pièce + file de validation + décisions tracées
 │       ├── storage/       🟢 port fichiers — clés opaques, JAMAIS servi en statique
-│       ├── notifications/ 🟢 canal interne (Push/WhatsApp/SMS en brique 9)
+│       ├── notifications/ 🟢 transports (Expo Push, email, WhatsApp, SMS) + alertes de taux
 │       ├── transactions/  🟢 machine à états + reçus + `exchange-executor.ts` (l'argent bouge ici)
 │       ├── cash/          🟢 mouvements, soldes (cache recalculable), clôture journalière
 │       ├── compliance/    🟢 règles de vigilance (fonctions pures) + alertes + plafonds
@@ -91,7 +91,7 @@ hadjchanges/
 │       └── reporting/     🟢 volumes, commissions, séries et répartitions + export comptable
 │
 ├── scripts-verif/
-│   └── api-check.mjs      ✅ vérification exécutable de bout en bout (225 contrôles)
+│   └── api-check.mjs      ✅ vérification exécutable de bout en bout (247 contrôles)
 │
 ├── admin/                 Next.js 15 (App Router)
 │   └── src/
@@ -117,6 +117,7 @@ hadjchanges/
         ├── useApi.ts      ⏳ Hook useAsync (loading / error / reload)
         ├── auth.tsx       🟢 Auth JWT persistée + promesse de refresh PARTAGÉE
         ├── useRates.ts    🟢 taux du jour, tenus à jour par WebSocket
+        ├── push.ts        🟢 enregistrement de l'appareil (silencieux sur émulateur)
         └── app/           🖥️ Écrans (Expo Router) — voir §6
 ```
 
@@ -265,7 +266,8 @@ Un opérateur ne modifie **jamais** un taux ni un plafond, et ne voit que son ag
                       → vérifié : api-check.mjs 198/198 + rendu et export dans le navigateur
 [🟢] 8. Conformité    vigilance LCB-FT + plafonds/blocage client + journal d'audit
                       → vérifié : api-check.mjs 225/225 + alertes réelles dans le navigateur
-[⚪] 9. Notifications Expo Push + WhatsApp/SMS + alertes de taux favorable
+[🟢] 9. Notifications Expo Push + email + WhatsApp/SMS + alertes de taux favorable
+                      → vérifié : api-check.mjs 247/247, courriel réellement remis (Mailpit)
 ```
 
 Correspondance cahier §7 : **phase 1** = briques 1-5 · **phase 2** = 6 + 9 · **phase 3** = 7 + 8.

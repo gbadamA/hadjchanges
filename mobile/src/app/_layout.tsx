@@ -11,6 +11,7 @@ import { StatusBar } from 'expo-status-bar';
 import type { ReactNode } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '../auth';
+import { configureForeground } from '../push';
 import { Loader } from '../ui';
 
 function Navigation(): ReactNode {
@@ -20,6 +21,10 @@ function Navigation(): ReactNode {
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#F5F8FC' } }} />
   );
 }
+
+// Hors composant : le comportement d'affichage se déclare une fois, au
+// chargement du module, pas à chaque rendu.
+configureForeground();
 
 export default function RootLayout(): ReactNode {
   const [fontsLoaded] = useFonts({

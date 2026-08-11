@@ -24,6 +24,15 @@ const envSchema = z.object({
   SMTP_PORT: z.coerce.number().int().default(1036),
   MAIL_FROM: z.string().default('HadjChanges <no-reply@hadjchanges.ci>'),
 
+  // Canaux sortants payants. Vides par défaut : le transport se déclare alors
+  // NON configuré et le service passe au canal suivant, plutôt que de faire
+  // semblant d'avoir envoyé.
+  WHATSAPP_TOKEN: z.string().default(''),
+  WHATSAPP_PHONE_ID: z.string().default(''),
+  TWILIO_ACCOUNT_SID: z.string().default(''),
+  TWILIO_AUTH_TOKEN: z.string().default(''),
+  TWILIO_FROM: z.string().default(''),
+
   BASE_CURRENCY: z.string().length(3).default('XOF'),
   RATE_LOCK_MINUTES: z.coerce.number().int().positive().default(30),
   RATE_STALE_HOURS: z.coerce.number().int().positive().default(12),

@@ -34,6 +34,7 @@ export default function Simulateur(): ReactNode {
   const [locked, setLocked] = useState<Quote | null>(null);
   const [locking, setLocking] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const [watching, setWatching] = useState<string | null>(null);
 
   const selected: RateRow | null = useMemo(
     () => rows.find((row) => row.currency.code === currencyCode) ?? rows[0] ?? null,
@@ -117,6 +118,17 @@ export default function Simulateur(): ReactNode {
       setError(cause instanceof ApiError ? cause.message : 'Verrouillage impossible.');
     } finally {
       setLocking(false);
+    }
+  };
+
+  const watchRate = async (): Promise<void> => {
+    if (!accessToken || !selected || !quote) return;
+    setError(null);
+    try {
+      await api.createRateAlert(selected.currency.code, Number(quote.appliedRate), accessToken);
+      setWatching(selected.currency.code);
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : 'Alerte impossible.');
     }
   };
 
@@ -224,6 +236,23 @@ export default function Simulateur(): ReactNode {
               ? 'Le taux verrouillé est garanti jusqu’à l’échéance affichée.'
               : 'La connexion est requise pour verrouiller un taux.'}
           </Text>
+
+          {/* Alerte de taux : proposée au moment où le client regarde le cours,
+              pas enterrée dans un écran de réglages. */}
+          {accessToken && selected ? (
+            <Pressable onPress={() => void watchRate()} hitSlop={8} style={styles.watch}>
+              <Ionicons
+                name={watching === selected.currency.code ? 'notifications' : 'notifications-outline'}
+                size={18}
+                color={C.navy}
+              />
+              <Text style={[T.label, styles.watchText]}>
+                {watching === selected.currency.code
+                  ? `Vous serez prévenu sous ${quote.appliedRate} FCFA`
+                  : `Me prévenir si ${selected.currency.code} passe sous ${quote.appliedRate} FCFA`}
+              </Text>
+            </Pressable>
+          ) : null}
         </Card>
       ) : null}
     </FormScreen>
@@ -267,4 +296,6 @@ const styles = StyleSheet.create({
     padding: S.md,
   },
   lockedText: { color: C.goldDeep, flex: 1 },
+  watch: { flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingTop: S.xs },
+  watchText: { color: C.navy, flex: 1 },
 });

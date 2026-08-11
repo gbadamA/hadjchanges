@@ -11,6 +11,7 @@ import {
 } from 'react';
 import { api, ApiError, type AuthResponse } from './api';
 import type { Profile } from './models';
+import { registerForPush, unregisterPush } from './push';
 
 const REFRESH_KEY = 'hc.refreshToken';
 
@@ -37,6 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
+  const [deviceToken, setDeviceToken] = useState<string | null>(null);
 
   /**
    * ⚠️ Promesse de rafraîchissement PARTAGÉE.
@@ -88,6 +90,18 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
     restore().finally(() => setBooting(false));
   }, [restore]);
 
+  /**
+   * Enregistrement de l'appareil pour les notifications poussées.
+   * Silencieux par construction : sur émulateur, ou si la permission est
+   * refusée, l'application marche sans push — ce n'est pas une panne.
+   */
+  useEffect(() => {
+    if (!accessToken) return;
+    registerForPush(accessToken)
+      .then((token) => setDeviceToken(token))
+      .catch(() => undefined);
+  }, [accessToken]);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       profile,
@@ -100,6 +114,10 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
         await persist(await api.register(input));
       },
       signOut: async () => {
+        // On oublie l'appareil AVANT de couper la session : après, le jeton
+        // d'accès ne vaut plus rien et le téléphone continuerait de recevoir
+        // les notifications d'un compte déconnecté.
+        if (deviceToken && accessToken) await unregisterPush(deviceToken, accessToken);
         const stored = await AsyncStorage.getItem(REFRESH_KEY);
         // On ferme la session côté serveur au mieux : si le réseau est coupé,
         // l'utilisateur doit quand même sortir de son compte sur l'appareil.
@@ -111,7 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
         setProfile(await api.me(accessToken));
       },
     }),
-    [profile, accessToken, booting, persist, clear],
+    [profile, accessToken, booting, deviceToken, persist, clear],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
