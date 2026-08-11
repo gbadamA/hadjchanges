@@ -1,0 +1,23 @@
+node_modules/
+dist/
+build/
+.next/
+.expo/
+.turbo/
+
+# Environnement — seuls les .example sont versionnés
+.env
+.env.*
+!.env.example
+
+# Fichiers déposés par les utilisateurs (KYC, reçus) : jamais dans git
+uploads/
+api/uploads/
+
+*.log
+npm-debug.log*
+yarn-error.log*
+.DS_Store
+Thumbs.db
+*.tsbuildinfo
+coverage/

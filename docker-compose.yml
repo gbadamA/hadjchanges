@@ -1,0 +1,32 @@
+# Services de développement de HadjChanges.
+# Ports décalés à dessein : 5432 est déjà pris sur le poste, 54320 est à fi-hadj.
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: hadjchanges-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hadjchanges
+      POSTGRES_PASSWORD: hadjchanges
+      POSTGRES_DB: hadjchanges
+    ports:
+      - "54360:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hadjchanges"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Boîte mail locale : rien ne sort du poste en développement.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: hadjchanges-mailpit
+    restart: unless-stopped
+    ports:
+      - "8036:8025" # interface web
+      - "1036:1025" # SMTP
+
+volumes:
+  db-data:

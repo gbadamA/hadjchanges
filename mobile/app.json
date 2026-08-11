@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "HadjChanges",
+    "slug": "hadjchanges",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "hadjchanges",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0B2A4A"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "ci.hadjchanges.app"
+    },
+    "android": {
+      "package": "ci.hadjchanges.app",
+      "edgeToEdgeEnabled": true,
+      "adaptiveIcon": {
+        "backgroundColor": "#0B2A4A"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "HadjChanges accède à vos photos pour importer votre pièce d'identité et vos reçus de paiement.",
+          "cameraPermission": "HadjChanges accède à l'appareil photo pour photographier votre pièce d'identité et vos reçus."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

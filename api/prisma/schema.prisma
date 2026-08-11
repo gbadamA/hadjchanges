@@ -1,0 +1,492 @@
+// ============================================================================
+// HadjChanges — modèle de données (le backbone du produit).
+// Cahier des charges §5. Toute évolution du métier commence ici.
+//
+// Trois invariants portés par ce schéma :
+//   1. Un client ne transige QUE si son KYC est VALIDE (règle appliquée en
+//      service, mais l'état vit ici : User.kycStatus).
+//   2. Une transaction n'est jamais modifiée en place sur ses montants : le
+//      taux et la commission sont FIGÉS dans la ligne au moment de la
+//      simulation verrouillée. Un taux qui bouge ensuite ne réécrit pas le
+//      passé.
+//   3. Tout ce qui touche à l'argent ou à l'identité laisse une trace
+//      (AuditLog) avec auteur + horodatage.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Énumérations
+// ---------------------------------------------------------------------------
+
+enum Role {
+  CLIENT
+  OPERATEUR
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum KycStatus {
+  NON_SOUMIS
+  EN_ATTENTE
+  VALIDE
+  REJETE
+}
+
+enum DocumentType {
+  CNI
+  PASSEPORT
+  PERMIS
+  CARTE_CONSULAIRE
+  SELFIE
+}
+
+/// Sens de l'opération **du point de vue du bureau de change**.
+/// ACHAT_DEVISE  : le bureau achète la devise au client (client apporte EUR, repart en XOF)
+/// VENTE_DEVISE  : le bureau vend la devise au client (client apporte XOF, repart en EUR)
+enum TransactionDirection {
+  ACHAT_DEVISE
+  VENTE_DEVISE
+}
+
+/// Cycle de vie d'une transaction (cahier §3.2). Les transitions autorisées
+/// sont tenues par la state machine côté service — jamais en base.
+enum TransactionStatus {
+  CREEE
+  RECU_SOUMIS
+  RECU_VALIDE
+  RECU_REJETE
+  CHANGE_EXECUTE
+  PRETE_POUR_RETRAIT
+  CLOTUREE
+  ANNULEE
+}
+
+enum DepositMethod {
+  ORANGE_MONEY
+  MTN_MOMO
+  MOOV_MONEY
+  WAVE
+  CARTE_BANCAIRE
+  ESPECES_AGENCE
+}
+
+enum PayoutMethod {
+  ESPECES_AGENCE
+  MOBILE_MONEY
+  VIREMENT_BANCAIRE
+}
+
+enum ReceiptStatus {
+  EN_ATTENTE
+  VALIDE
+  REJETE
+}
+
+enum CashMovementType {
+  ALIMENTATION
+  RETRAIT
+  ENTREE_TRANSACTION
+  SORTIE_TRANSACTION
+  AJUSTEMENT
+  CLOTURE_JOURNALIERE
+}
+
+enum NotificationChannel {
+  PUSH
+  SMS
+  EMAIL
+  WHATSAPP
+}
+
+enum ComplianceSeverity {
+  INFO
+  ALERTE
+  CRITIQUE
+}
+
+// ---------------------------------------------------------------------------
+// Identité & KYC
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String    @id @default(cuid())
+  phone        String    @unique
+  email        String?   @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  role         Role      @default(CLIENT)
+
+  // KYC — bloquant pour toute transaction (cahier §3.2)
+  kycStatus       KycStatus @default(NON_SOUMIS)
+  kycValidatedAt  DateTime?
+  kycRejectReason String?
+
+  // Plafonds (en XOF, devise de référence). null = plafond global du réglage.
+  dailyLimitXof   Decimal? @db.Decimal(18, 2)
+  monthlyLimitXof Decimal? @db.Decimal(18, 2)
+
+  blocked       Boolean   @default(false)
+  blockedReason String?
+
+  /// Agence de rattachement — pour un OPERATEUR uniquement.
+  agencyId String?
+  agency   Agency? @relation("AgencyStaff", fields: [agencyId], references: [id])
+
+  twoFactorSecret  String?
+  twoFactorEnabled Boolean @default(false)
+
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  kycDocuments      KycDocument[]
+  transactions      Transaction[]     @relation("ClientTransactions")
+  handledTxns       Transaction[]     @relation("OperatorTransactions")
+  reviewedKyc       KycDocument[]     @relation("KycReviewer")
+  validatedReceipts PaymentReceipt[]  @relation("ReceiptValidator")
+  publishedRates    ExchangeRate[]
+  cashMovements     CashMovement[]
+  auditLogs         AuditLog[]
+  notifications     Notification[]
+  pushTokens        PushToken[]
+  rateAlerts        RateAlert[]
+  complianceAlerts  ComplianceAlert[]
+
+  @@index([role])
+  @@index([kycStatus])
+}
+
+model KycDocument {
+  id      String       @id @default(cuid())
+  userId  String
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type    DocumentType
+  fileUrl String
+  /// Selfie de vérification — optionnel mais recommandé (cahier §3.2).
+  selfieUrl String?
+
+  documentNumber String?
+  expiresAt      DateTime?
+
+  status       KycStatus @default(EN_ATTENTE)
+  rejectReason String?
+  reviewedById String?
+  reviewedBy   User?     @relation("KycReviewer", fields: [reviewedById], references: [id])
+  reviewedAt   DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, status])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Réseau : agences et caisses
+// ---------------------------------------------------------------------------
+
+model Agency {
+  id      String  @id @default(cuid())
+  code    String  @unique
+  name    String
+  city    String
+  address String?
+  phone   String?
+  active  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  staff         User[]         @relation("AgencyStaff")
+  balances      CashBalance[]
+  movements     CashMovement[]
+  rates         ExchangeRate[]
+  transactions  Transaction[]
+}
+
+/// Solde de caisse courant, par agence et par devise. Dénormalisé à dessein :
+/// le solde se lit à chaque écran, il ne se recalcule pas à la volée.
+/// Source de vérité = la somme des CashMovement ; ce cache est recalculable.
+model CashBalance {
+  id         String   @id @default(cuid())
+  agencyId   String
+  agency     Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  currencyId String
+  currency   Currency @relation(fields: [currencyId], references: [id])
+  amount     Decimal  @default(0) @db.Decimal(18, 2)
+  updatedAt  DateTime @updatedAt
+
+  @@unique([agencyId, currencyId])
+}
+
+model CashMovement {
+  id         String           @id @default(cuid())
+  agencyId   String
+  agency     Agency           @relation(fields: [agencyId], references: [id])
+  currencyId String
+  currency   Currency         @relation(fields: [currencyId], references: [id])
+  type       CashMovementType
+  /// Signé : positif = entrée en caisse, négatif = sortie.
+  amount     Decimal          @db.Decimal(18, 2)
+  /// Solde après mouvement — fige l'historique même si le cache est recalculé.
+  balanceAfter Decimal        @db.Decimal(18, 2)
+
+  transactionId String?
+  transaction   Transaction? @relation(fields: [transactionId], references: [id])
+
+  note        String?
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([agencyId, currencyId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Devises et taux
+// ---------------------------------------------------------------------------
+
+model Currency {
+  id       String  @id @default(cuid())
+  /// Code ISO 4217 : XOF, EUR, USD, GBP…
+  code     String  @unique
+  name     String
+  symbol   String
+  /// Nombre de décimales d'affichage (XOF = 0, EUR = 2).
+  decimals Int     @default(2)
+  /// La devise de référence (XOF). Une seule ligne à true.
+  isBase   Boolean @default(false)
+  active   Boolean @default(true)
+  sortOrder Int    @default(0)
+
+  rates        ExchangeRate[]
+  balances     CashBalance[]
+  movements    CashMovement[]
+  sourceTxns   Transaction[]  @relation("SourceCurrency")
+  targetTxns   Transaction[]  @relation("TargetCurrency")
+  rateAlerts   RateAlert[]
+}
+
+/// Table VERSIONNÉE : on n'écrase jamais un taux, on en publie un nouveau.
+/// L'historique des variations du cahier §3.1, c'est cette table lue à
+/// l'envers. Le taux courant = la ligne la plus récente (effectiveFrom desc)
+/// pour la devise (et l'agence, si taux différencié).
+model ExchangeRate {
+  id         String   @id @default(cuid())
+  currencyId String
+  currency   Currency @relation(fields: [currencyId], references: [id])
+
+  /// Taux exprimés en devise de référence (XOF) pour 1 unité de `currency`.
+  /// buyRate  = ce que le bureau PAIE au client qui apporte la devise.
+  /// sellRate = ce que le client PAIE pour obtenir la devise.
+  buyRate  Decimal @db.Decimal(18, 6)
+  sellRate Decimal @db.Decimal(18, 6)
+
+  /// Commission en pourcentage appliquée par-dessus le taux, par paire.
+  commissionPct Decimal @default(0) @db.Decimal(5, 2)
+
+  /// null = taux global (toutes agences). Renseigné = taux différencié.
+  agencyId String?
+  agency   Agency? @relation(fields: [agencyId], references: [id])
+
+  effectiveFrom DateTime @default(now())
+  createdById   String
+  createdBy     User     @relation(fields: [createdById], references: [id])
+  createdAt     DateTime @default(now())
+
+  transactions Transaction[]
+
+  @@index([currencyId, agencyId, effectiveFrom])
+}
+
+// ---------------------------------------------------------------------------
+// Transactions
+// ---------------------------------------------------------------------------
+
+model Transaction {
+  id        String @id @default(cuid())
+  /// Référence lisible communiquée au client : HC-2026-000123.
+  reference String @unique
+
+  clientId String
+  client   User   @relation("ClientTransactions", fields: [clientId], references: [id])
+
+  operatorId String?
+  operator   User?   @relation("OperatorTransactions", fields: [operatorId], references: [id])
+
+  agencyId String?
+  agency   Agency? @relation(fields: [agencyId], references: [id])
+
+  direction        TransactionDirection
+  sourceCurrencyId String
+  sourceCurrency   Currency             @relation("SourceCurrency", fields: [sourceCurrencyId], references: [id])
+  targetCurrencyId String
+  targetCurrency   Currency             @relation("TargetCurrency", fields: [targetCurrencyId], references: [id])
+
+  sourceAmount Decimal @db.Decimal(18, 2)
+  targetAmount Decimal @db.Decimal(18, 2)
+
+  /// Photographie du taux au moment de la simulation. Ne change JAMAIS
+  /// ensuite, même si ExchangeRate est mis à jour entre-temps.
+  appliedRate     Decimal @db.Decimal(18, 6)
+  commissionPct   Decimal @db.Decimal(5, 2)
+  commissionAmount Decimal @db.Decimal(18, 2)
+  /// Équivalent XOF du montant source — sert aux plafonds et aux seuils LCB-FT.
+  amountXof       Decimal @db.Decimal(18, 2)
+
+  rateId String?
+  rate   ExchangeRate? @relation(fields: [rateId], references: [id])
+  /// Verrouillage du taux : au-delà, la transaction est recalculée au taux du
+  /// moment (décision produit — voir CLAUDE.md §6).
+  rateLockedUntil DateTime?
+
+  depositMethod DepositMethod
+  payoutMethod  PayoutMethod?
+  payoutDetails String?
+
+  status       TransactionStatus @default(CREEE)
+  cancelReason String?
+
+  // Horodatage de chaque étape — la timeline du client sort de ces colonnes.
+  createdAt          DateTime  @default(now())
+  receiptSubmittedAt DateTime?
+  receiptReviewedAt  DateTime?
+  executedAt         DateTime?
+  readyAt            DateTime?
+  closedAt           DateTime?
+  cancelledAt        DateTime?
+  updatedAt          DateTime  @updatedAt
+
+  /// Justificatif final téléchargeable, généré à la clôture.
+  finalReceiptPdfUrl String?
+
+  receipts         PaymentReceipt[]
+  cashMovements    CashMovement[]
+  complianceAlerts ComplianceAlert[]
+
+  @@index([clientId, createdAt])
+  @@index([status, createdAt])
+  @@index([agencyId, createdAt])
+}
+
+/// Preuve de dépôt importée par le client. Plusieurs lignes possibles : un
+/// reçu rejeté n'est pas supprimé, le client en redépose un nouveau.
+model PaymentReceipt {
+  id            String      @id @default(cuid())
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  fileUrl  String
+  mimeType String
+  /// Montant et référence lus sur le reçu, saisis par l'opérateur au contrôle.
+  declaredAmount Decimal? @db.Decimal(18, 2)
+  declaredRef    String?
+
+  status        ReceiptStatus @default(EN_ATTENTE)
+  rejectReason  String?
+  validatedById String?
+  validatedBy   User?         @relation("ReceiptValidator", fields: [validatedById], references: [id])
+  validatedAt   DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([status, createdAt])
+  @@index([transactionId])
+}
+
+// ---------------------------------------------------------------------------
+// Conformité, notifications, réglages, audit
+// ---------------------------------------------------------------------------
+
+/// Seuils réglementaires LCB-FT dépassés, transactions atypiques (cahier §3.1).
+model ComplianceAlert {
+  id            String             @id @default(cuid())
+  userId        String?
+  user          User?              @relation(fields: [userId], references: [id])
+  transactionId String?
+  transaction   Transaction?       @relation(fields: [transactionId], references: [id])
+  rule          String
+  severity      ComplianceSeverity @default(ALERTE)
+  message       String
+  resolved      Boolean            @default(false)
+  resolvedAt    DateTime?
+  createdAt     DateTime           @default(now())
+
+  @@index([resolved, severity])
+}
+
+model Notification {
+  id      String              @id @default(cuid())
+  userId  String
+  user    User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel NotificationChannel
+  title   String
+  body    String
+  /// Route applicative visée au tap (ex. /transaction/xxx).
+  deepLink String?
+  readAt   DateTime?
+  sentAt   DateTime?
+  error    String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, readAt])
+}
+
+model PushToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  platform  String
+  createdAt DateTime @default(now())
+}
+
+/// Alerte de taux favorable sur une devise suivie (cahier §3.2, optionnel).
+model RateAlert {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currencyId String
+  currency   Currency @relation(fields: [currencyId], references: [id])
+  /// Déclenche quand sellRate passe SOUS ce seuil (achat de devise moins cher).
+  thresholdRate Decimal  @db.Decimal(18, 6)
+  active        Boolean  @default(true)
+  triggeredAt   DateTime?
+  createdAt     DateTime @default(now())
+
+  @@unique([userId, currencyId])
+}
+
+/// Réglages système modifiables sans redéploiement (seuils LCB-FT, plafonds
+/// par défaut, numéros de dépôt, délai de verrouillage du taux…).
+model Setting {
+  key       String   @id
+  value     String
+  label     String
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id       String   @id @default(cuid())
+  userId   String?
+  user     User?    @relation(fields: [userId], references: [id])
+  action   String
+  entity   String
+  entityId String?
+  /// Avant/après sérialisés — pour un changement de taux ou de plafond.
+  before   Json?
+  after    Json?
+  ip       String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}

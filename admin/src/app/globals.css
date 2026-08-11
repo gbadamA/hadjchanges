@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * Couleurs de marque en CANAUX RVB (pas en hex) : c'est ce qui permet à
+ * Tailwind d'appliquer ses modificateurs d'opacité (`bg-primary/10`) tout en
+ * gardant la couleur surchargeable à l'exécution.
+ * Valeurs = `admin/src/lib/tokens.ts` → `brand`.
+ */
+:root {
+  --c-primary: 15 61 107; /* #0F3D6B */
+  --c-primary-hover: 11 46 82; /* #0B2E52 */
+  --c-secondary: 201 162 39; /* #C9A227 */
+  --c-secondary-hover: 169 135 28; /* #A9871C */
+  --c-tertiary: 46 124 184; /* #2E7CB8 */
+}
+
+/* Le thème sombre garde les mêmes teintes de marque : ce sont les NEUTRES qui
+   changent (classes `dark:` du preset), pas l'identité. L'azur est juste
+   éclairci pour rester lisible sur fond nuit. */
+.dark {
+  --c-tertiary: 90 160 214;
+}
+
+@layer base {
+  body {
+    @apply bg-light-bg text-light-text dark:bg-dark-bg dark:text-dark-text font-body antialiased;
+  }
+
+  /* Montants et taux : chiffres alignés en colonne dès qu'ils s'empilent. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
