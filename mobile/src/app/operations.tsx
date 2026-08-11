@@ -7,7 +7,7 @@ import { useAuth } from '../auth';
 import { downloadAndShare } from '../download';
 import { money, type Transaction, type TransactionStatus } from '../models';
 import { C, R, S, STATUS, T } from '../theme';
-import { Badge, Button, Card, EmptyState, ErrorBanner, Loader, Screen } from '../ui';
+import { Badge, Button, EmptyState, ErrorBanner, Loader, PressableCard, Screen } from '../ui';
 
 /** Filtres proposés au client — les statuts qu'il distingue vraiment. */
 const FILTERS: Array<{ value: TransactionStatus | 'TOUTES'; label: string }> = [
@@ -128,11 +128,11 @@ export default function Operations(): ReactNode {
         ) : null}
 
         {visible.map((row) => (
-          <Pressable
+          <PressableCard
             key={row.id}
             onPress={() => router.push({ pathname: '/transaction/[id]', params: { id: row.id } })}
+            style={styles.card}
           >
-            <Card style={styles.card}>
               <View style={styles.row}>
                 <Text style={T.label}>{row.reference}</Text>
                 <Badge
@@ -152,8 +152,7 @@ export default function Operations(): ReactNode {
                   {new Date(row.createdAt).toLocaleDateString('fr-FR')}
                 </Text>
               </View>
-            </Card>
-          </Pressable>
+          </PressableCard>
         ))}
 
         {accessToken && rows.length > 0 ? (

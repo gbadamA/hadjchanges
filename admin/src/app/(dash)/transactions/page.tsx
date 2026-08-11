@@ -110,7 +110,7 @@ export default function TransactionsPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-4">
+      <header className="animate-fade-up flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-1">
           <h1 className="font-display text-h1">Transactions</h1>
           <p className="text-light-muted dark:text-dark-muted">
@@ -159,7 +159,7 @@ export default function TransactionsPage() {
 
       {/* Le tableau défile dans son propre conteneur : la page, elle, ne doit
           jamais défiler horizontalement. */}
-      <div className="overflow-x-auto rounded-md border border-light-border bg-light-surface dark:border-dark-border dark:bg-dark-surface">
+      <div className="surface overflow-x-auto">
         <table className="w-full min-w-[860px] text-body">
           <thead className="border-b border-light-border text-caption uppercase tracking-wide text-light-muted dark:border-dark-border dark:text-dark-muted">
             <tr>

@@ -1205,6 +1205,111 @@ async function main() {
     );
   }
 
+  // -------------------------------------------------------------- rapports --
+  section('Rapports et export comptable');
+  {
+    const { status, data } = await call('GET', '/reporting/overview', { token: admin.accessToken });
+    check('le rapport est servi (200)', status === 200, `reçu ${status}`);
+    check(
+      'la fenêtre par défaut couvre 30 jours',
+      (data?.series ?? []).length === 30,
+      `${data?.series?.length} points`,
+    );
+    // Les jours creux DOIVENT être présents : sans eux, une courbe relierait
+    // deux pics en ligne droite et inventerait une activité continue.
+    check(
+      'les jours sans activité sont présents dans la série',
+      (data?.series ?? []).some((point) => point.operations === 0),
+    );
+    check(
+      'la série est ordonnée du plus ancien au plus récent',
+      (data?.series ?? []).every((point, index, all) => index === 0 || point.day > all[index - 1].day),
+    );
+    check(
+      'les montants sortent en chaînes, jamais en flottants',
+      typeof data?.totals?.volumeXof === 'string' && typeof data?.totals?.commissionXof === 'string',
+    );
+
+    // Cohérence : le total doit être la somme de la série, au centime près.
+    const sommeSerie = (data?.series ?? []).reduce((total, point) => total + Number(point.volumeXof), 0);
+    check(
+      'le total annoncé est bien la somme des jours',
+      Math.abs(sommeSerie - Number(data?.totals?.volumeXof)) < 1,
+      `série ${sommeSerie} vs total ${data?.totals?.volumeXof}`,
+    );
+
+    const sommeDevises = (data?.byCurrency ?? []).reduce((total, row) => total + Number(row.volumeXof), 0);
+    check(
+      'la répartition par devise couvre tout le volume',
+      Math.abs(sommeDevises - Number(data?.totals?.volumeXof)) < 1,
+      `devises ${sommeDevises} vs total ${data?.totals?.volumeXof}`,
+    );
+    check(
+      'le FCFA n’apparaît pas comme devise échangée',
+      (data?.byCurrency ?? []).every((row) => row.code !== 'XOF'),
+    );
+
+    // Le chiffre « réalisé » ne doit pas inclure les opérations en attente.
+    const pending = await call('GET', '/transactions?status=CREEE', { token: admin.accessToken });
+    const attendu = (pending.data ?? []).reduce((total, row) => total + Number(row.amountXof), 0);
+    check(
+      'les opérations non exécutées sont comptées à part, pas dans le volume',
+      Math.abs(Number(data?.totals?.pendingXof) - attendu) < 1,
+      `${data?.totals?.pendingXof} vs ${attendu}`,
+    );
+
+    // Fenêtre restreinte : le total doit diminuer ou rester égal, jamais grandir.
+    const jour = new Date().toISOString().slice(0, 10);
+    const restreint = await call('GET', `/reporting/overview?from=${jour}`, { token: admin.accessToken });
+    check(
+      'une fenêtre plus courte ne peut pas produire plus de volume',
+      Number(restreint.data?.totals?.volumeXof) <= Number(data?.totals?.volumeXof),
+      `${restreint.data?.totals?.volumeXof} vs ${data?.totals?.volumeXof}`,
+    );
+    check('la fenêtre demandée est reprise dans la réponse', restreint.data?.period?.from === jour);
+
+    const client = await login(CLIENT);
+    const interdit = await call('GET', '/reporting/overview', { token: client.accessToken });
+    check('un client ne consulte pas les rapports (403)', interdit.status === 403, `reçu ${interdit.status}`);
+
+    // Un opérateur voit ses chiffres, cantonnés à son agence.
+    const operateur = await login(OPERATEUR);
+    const vueAgence = await call('GET', '/reporting/overview', { token: operateur.accessToken });
+    check('un opérateur consulte son propre rapport (200)', vueAgence.status === 200, `reçu ${vueAgence.status}`);
+    check(
+      'son rapport ne porte que sur son agence',
+      (vueAgence.data?.byAgency ?? []).length <= 1,
+      `${vueAgence.data?.byAgency?.length} agences`,
+    );
+
+    // Export comptable.
+    const csv = await fetch(`${API}/reporting/export?format=csv`, {
+      headers: { authorization: `Bearer ${admin.accessToken}` },
+    });
+    const octets = Buffer.from(await csv.arrayBuffer());
+    check('l’export comptable est servi (200)', csv.status === 200, `reçu ${csv.status}`);
+    check('il commence par un BOM UTF-8', octets.subarray(0, 3).toString('hex') === 'efbbbf');
+    const lignes = octets.subarray(3).toString('utf8').split('\r\n');
+    check('l’en-tête nomme les colonnes attendues', lignes[0] === 'Jour;Opérations;Volume (XOF);Commissions (XOF)', lignes[0]);
+    check(
+      'le fichier porte une ligne de TOTAL',
+      lignes[lignes.length - 1].startsWith('TOTAL'),
+      lignes[lignes.length - 1],
+    );
+    check(
+      'le total du fichier correspond au rapport',
+      lignes[lignes.length - 1].split(';')[1] === String(data?.totals?.operations),
+      lignes[lignes.length - 1],
+    );
+
+    const exportOperateur = await call('GET', '/reporting/export', { token: operateur.accessToken });
+    check(
+      'l’export comptable reste réservé à l’encadrement (403)',
+      exportOperateur.status === 403,
+      `reçu ${exportOperateur.status}`,
+    );
+  }
+
   // ------------------------------------------------------------------ bilan --
   console.log(`\n${'='.repeat(60)}`);
   console.log(`${passed} vérifications passées · ${failed} échouées · ${skipped} ignorées`);

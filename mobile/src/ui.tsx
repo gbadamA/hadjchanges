@@ -86,6 +86,29 @@ export function Card({
   );
 }
 
+/**
+ * Carte cliquable. Une carte qui mène quelque part doit **réagir au doigt** :
+ * sans l'enfoncement, rien ne distingue une liste consultable d'une liste
+ * navigable, et l'utilisateur tape deux fois pour vérifier qu'il a bien touché.
+ */
+export function PressableCard({
+  children,
+  onPress,
+  style,
+  elevated = false,
+}: {
+  children: ReactNode;
+  onPress: () => void;
+  style?: StyleProp<ViewStyle>;
+  elevated?: boolean;
+}): ReactNode {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [pressed && styles.pressed]}>
+      <View style={[styles.card, elevated ? shadow.float : shadow.card, style]}>{children}</View>
+    </Pressable>
+  );
+}
+
 export function Badge({
   label,
   color,

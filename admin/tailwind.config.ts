@@ -99,10 +99,34 @@ const config: Config = {
           "0%": { backgroundColor: "rgb(var(--c-secondary) / 0.18)" },
           "100%": { backgroundColor: "transparent" },
         },
+        /** Tracé progressif d'une courbe SVG : la ligne se dessine. */
+        draw: {
+          from: { strokeDashoffset: "var(--dash)" },
+          to: { strokeDashoffset: "0" },
+        },
+        /** Remplissage d'aire qui monte sous la courbe une fois tracée. */
+        "fill-in": {
+          from: { opacity: "0" },
+          to: { opacity: "1" },
+        },
+        /** Barre qui pousse depuis sa base — jamais depuis le centre. */
+        rise: {
+          from: { transform: "scaleY(0)" },
+          to: { transform: "scaleY(1)" },
+        },
+        /** Halo qui respire, réservé au chiffre clé d'un tableau de bord. */
+        breathe: {
+          "0%, 100%": { boxShadow: "0 0 0 rgba(201, 162, 39, 0)" },
+          "50%": { boxShadow: "0 0 24px rgba(201, 162, 39, 0.28)" },
+        },
       },
       animation: {
         "fade-up": "fade-up 0.5s ease-out both",
         "rate-flash": "rate-flash 1.2s ease-out both",
+        draw: "draw 1.1s cubic-bezier(0.22, 1, 0.36, 1) both",
+        "fill-in": "fill-in 0.6s ease-out 0.5s both",
+        rise: "rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both",
+        breathe: "breathe 4s ease-in-out infinite",
       },
     },
   },

@@ -110,6 +110,13 @@ Les transitions invalides sont refusées **côté service** par une state machin
 
 ## 6. Décisions actées
 
+- ✅ **Le volume affiché est le chiffre RÉALISÉ**, c'est-à-dire les opérations dont le change a été
+  exécuté. Les opérations en cours sont montrées à part : les additionner gonflerait les chiffres
+  de direction avec des intentions.
+- ✅ **Les graphiques sont du SVG maison**, jamais une bibliothèque de graphes — plus lourde à elle
+  seule que tout le dashboard, pour trois formes. Et **l'axe vertical part toujours de zéro** : un
+  axe tronqué transforme une variation de 2 % en falaise, ce qui est un mensonge visuel dans un
+  tableau de bord financier.
 - ✅ **La clôture journalière est un COMPTAGE, pas une saisie d'écart.** L'agent déclare ce qu'il a
   physiquement devant lui ; c'est le système qui calcule la différence. Lui demander l'écart
   reviendrait à lui demander de se juger lui-même.
@@ -166,6 +173,25 @@ Les transitions invalides sont refusées **côté service** par une state machin
 ---
 
 ## 7. Design (non négociable)
+
+### Élévations et effets (exigence permanente, les deux surfaces)
+
+Le produit doit avoir de la **matière** : les surfaces se soulèvent, les chiffres apparaissent,
+les gestes répondent. Trois classes partagées côté dashboard (`globals.css`) :
+`surface` (fond + bordure + ombre **teintée bleu**, jamais noire), `lift` (au survol : −2 px et
+ombre qui s'ouvre — `transform` et `box-shadow` seulement, les deux propriétés que le navigateur
+anime sans recalculer la mise en page), `banner-diplomatic` (le dégradé signature, réservé aux
+en-têtes de tableau de bord).
+
+Animations : `fade-up` en cascade (60-90 ms d'écart) à l'apparition d'une liste, `draw` pour le
+tracé d'une courbe, `rise` pour une barre qui pousse **depuis sa base**, `breathe` réservé au
+chiffre clé. Toutes jouent **une seule fois** — une courbe qui bouge sans cesse empêche de lire un
+montant. ⚠️ `prefers-reduced-motion` coupe tout : le mouvement est un confort, jamais une
+information.
+
+Côté mobile : `shadow.card` / `shadow.float` / `shadow.navy` / `shadow.gold`, et **toute carte
+cliquable s'enfonce** (`PressableCard`, scale 0.97). Une carte qui mène quelque part sans réagir
+au doigt se fait taper deux fois.
 
 ### Dashboard — DA « bleu diplomatique & or », reprise de FI-HADJ
 
@@ -239,7 +265,7 @@ les deux surfaces doivent se reconnaître au premier coup d'œil. Police Plus Ja
 | 4 | **Transaction** | création + verrou de taux + import de reçu + file de validation + exécution du change | ⚪ |
 | 5 | **Suivi** | historique filtrable, justificatif PDF, exports Excel/CSV | 🟢 |
 | 6 | **Caisses** | soldes par devise, mouvements, clôture journalière, affectation des agents | 🟢 |
-| 7 | **Reporting** | volumes, commissions, graphiques SVG, export Excel/PDF | ⚪ |
+| 7 | **Reporting** | volumes, commissions, graphiques SVG maison, export comptable | 🟢 |
 | 8 | **Conformité** | seuils LCB-FT, alertes, plafonds client, journal d'audit consultable | ⚪ |
 | 9 | **Notifications** | Expo Push + WhatsApp/SMS + alertes de taux favorable | ⚪ |
 
@@ -302,6 +328,10 @@ d'où la comparaison par code de caractère.
 ⚠️ **`content-disposition` doit être dans `exposedHeaders` de la configuration CORS.** Sans lui, le
 navigateur cache l'en-tête aux requêtes inter-origines et le dashboard enregistrait les exports
 sous un nom générique au lieu du nom daté envoyé par le serveur.
+
+⚠️ **La série journalière remplit les jours creux** (`generate_series` en SQL). Sans eux, la courbe
+relierait le 3 au 11 en ligne droite et laisserait croire à une activité continue pendant une
+semaine morte.
 
 ⚠️ **`api-check.mjs` ne doit RIEN présumer de l'état de la base.** Trois faux négatifs déjà payés :
 la clôture du jour faite à la main dans le navigateur (le script choisit désormais le premier jour

@@ -80,14 +80,16 @@ Comptes du seed : admin `0700000002` / `Admin@2026`, client vérifié `070900000
   exports Excel et CSV côté dashboard.
 - **Brique 6 — caisses** 🟢 soldes par devise, alimentation et retrait, clôture journalière par
   comptage avec constat d'écart, affectation des opérateurs aux agences.
+- **Brique 7 — reporting** 🟢 volumes réalisés, commissions, séries journalières et répartitions,
+  graphiques SVG maison, export comptable CSV.
 - **Mobile** (Expo SDK 57) : taux poussés en direct, simulateur, verrou, comptes, vérification
   d’identité, opération de change complète et suivi.
-- **Dashboard** : connexion équipe, identités, reçus, transactions, caisses. Les modules à venir
+- **Dashboard** : connexion équipe, identités, reçus, transactions, caisses, rapports. Les modules à venir
   apparaissent grisés dans le menu tant qu’ils n’existent pas.
 
-Vérifié : `api-check.mjs` **178/178**, `tsc --noEmit` 0 erreur sur les trois briques, et la boucle
+Vérifié : `api-check.mjs` **198/198**, `tsc --noEmit` 0 erreur sur les trois briques, et la boucle
 complète constatée dans le navigateur — simulation → verrou → opération → reçu → validation au
 dashboard → change exécuté → fonds disponibles → suivi horodaté côté client.
 
-Suite : brique 7 (reporting — volumes, commissions, graphiques, exports comptables). Roadmap
-complète au §9 de [CLAUDE.md](CLAUDE.md).
+Suite : brique 8 (conformité — seuils LCB-FT, plafonds par client, journal d’audit consultable).
+Roadmap complète au §9 de [CLAUDE.md](CLAUDE.md).

@@ -33,3 +33,44 @@
     font-variant-numeric: tabular-nums;
   }
 }
+
+@layer components {
+  /**
+   * Soulèvement au survol — l'élévation demandée pour ce projet.
+   * La carte se décolle de 2 px et son ombre s'ouvre : le mouvement dit
+   * « cliquable » sans qu'on ait à ajouter un contour ni une flèche.
+   * Transform ET box-shadow uniquement : ce sont les deux propriétés que le
+   * navigateur anime sans recalculer la mise en page.
+   */
+  .lift {
+    @apply transition-[transform,box-shadow] duration-200 ease-out;
+  }
+  .lift:hover {
+    @apply -translate-y-0.5 shadow-glow;
+  }
+
+  /** Carte de fond standard du dashboard : une seule classe, partout. */
+  .surface {
+    @apply rounded-md border border-light-border bg-light-surface shadow-card dark:border-dark-border dark:bg-dark-surface;
+  }
+
+  /**
+   * Bandeau signature : dégradé bleu nuit → azur → or, réservé aux en-têtes
+   * de tableau de bord. L'or ne doit occuper que la fin de course.
+   */
+  .banner-diplomatic {
+    @apply bg-diplomatic text-white shadow-glow;
+  }
+}
+
+/* Le mouvement est un confort, pas une information : on le coupe entièrement
+   pour qui demande moins d'animations. Les contenus restent tous visibles. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

@@ -82,7 +82,7 @@ export default function KycQueuePage() {
 
   return (
     <div className="space-y-6">
-      <header className="space-y-1">
+      <header className="animate-fade-up space-y-1">
         <h1 className="font-display text-h1">Identités</h1>
         <p className="text-light-muted dark:text-dark-muted">
           Aucune opération de change n’est possible tant qu’une identité n’est pas validée.
@@ -147,7 +147,7 @@ export default function KycQueuePage() {
         </ul>
 
         {selected ? (
-          <section className="space-y-4 rounded-md border border-light-border bg-light-surface p-6 dark:border-dark-border dark:bg-dark-surface">
+          <section className="surface lift space-y-4 p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <h2 className="font-display text-h2">

@@ -101,7 +101,7 @@ export default function ReceiptsQueuePage() {
 
   return (
     <div className="space-y-6">
-      <header className="space-y-1">
+      <header className="animate-fade-up space-y-1">
         <h1 className="font-display text-h1">Reçus de paiement</h1>
         <p className="text-light-muted dark:text-dark-muted">
           Valider un reçu exécute le change et mouvemente la caisse. Vérifiez le montant avant de
@@ -167,7 +167,7 @@ export default function ReceiptsQueuePage() {
         </ul>
 
         {selected ? (
-          <section className="space-y-5 rounded-md border border-light-border bg-light-surface p-6 dark:border-dark-border dark:bg-dark-surface">
+          <section className="surface lift space-y-5 p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <h2 className="font-display text-h2">{selected.transaction.reference}</h2>

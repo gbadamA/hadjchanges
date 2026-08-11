@@ -140,7 +140,7 @@ export default function CaissesPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-4">
+      <header className="animate-fade-up flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-1">
           <h1 className="font-display text-h1">Caisses</h1>
           <p className="text-light-muted dark:text-dark-muted">
@@ -178,7 +178,7 @@ export default function CaissesPage() {
         {balances.map((balance) => (
           <div
             key={balance.currency.code}
-            className="rounded-md border border-light-border bg-light-surface p-5 dark:border-dark-border dark:bg-dark-surface"
+            className="surface lift p-5"
           >
             <p className="text-caption text-light-muted dark:text-dark-muted">
               {balance.currency.code}
@@ -193,7 +193,7 @@ export default function CaissesPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         {isManager ? (
-          <section className="space-y-4 rounded-md border border-light-border bg-light-surface p-6 dark:border-dark-border dark:bg-dark-surface">
+          <section className="surface lift space-y-4 p-6">
             <h2 className="font-display text-h2">Mouvementer la caisse</h2>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="space-y-1">
@@ -254,7 +254,7 @@ export default function CaissesPage() {
           </section>
         ) : null}
 
-        <section className="space-y-4 rounded-md border border-light-border bg-light-surface p-6 dark:border-dark-border dark:bg-dark-surface">
+        <section className="surface lift space-y-4 p-6">
           <div>
             <h2 className="font-display text-h2">Clôture du jour</h2>
             <p className="text-light-muted dark:text-dark-muted">
@@ -341,7 +341,7 @@ export default function CaissesPage() {
 
       <section className="space-y-3">
         <h2 className="font-display text-h2">Mouvements</h2>
-        <div className="overflow-x-auto rounded-md border border-light-border bg-light-surface dark:border-dark-border dark:bg-dark-surface">
+        <div className="surface overflow-x-auto">
           <table className="w-full min-w-[760px] text-body">
             <thead className="border-b border-light-border text-caption uppercase tracking-wide text-light-muted dark:border-dark-border dark:text-dark-muted">
               <tr>

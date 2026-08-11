@@ -26,7 +26,7 @@ export const NAVIGATION: NavItem[] = [
   { href: '/clients', label: 'Clients', roles: MANAGERS, ready: false },
   { href: '/caisses', label: 'Caisses', roles: ALL_STAFF, ready: true },
   { href: '/agences', label: 'Agences', roles: MANAGERS, ready: false },
-  { href: '/rapports', label: 'Rapports', roles: MANAGERS, ready: false },
+  { href: '/rapports', label: 'Rapports', roles: ALL_STAFF, ready: true },
   { href: '/equipe', label: 'Équipe', roles: ['SUPER_ADMIN'], ready: false },
   { href: '/audit', label: 'Journal d’audit', roles: MANAGERS, ready: false },
 ];

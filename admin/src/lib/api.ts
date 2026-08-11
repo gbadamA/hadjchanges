@@ -306,6 +306,31 @@ export const cash = {
     }),
 };
 
+export interface ReportingOverview {
+  period: { from: string; to: string };
+  totals: {
+    operations: number;
+    volumeXof: string;
+    commissionXof: string;
+    averageXof: string;
+    clients: number;
+    pendingOperations: number;
+    pendingXof: string;
+  };
+  series: Array<{ day: string; operations: number; volumeXof: string; commissionXof: string }>;
+  byCurrency: Array<{ code: string; operations: number; volumeXof: string; commissionXof: string }>;
+  byDeposit: Array<{ method: string; operations: number; volumeXof: string }>;
+  byAgency: Array<{ agencyId: string; name: string; operations: number; volumeXof: string }>;
+  byDirection: Array<{ direction: string; operations: number; volumeXof: string }>;
+}
+
+export const reporting = {
+  overview: (token: string, params: Record<string, string> = {}) =>
+    apiFetch<ReportingOverview>(`/reporting/overview?${new URLSearchParams(params).toString()}`, {
+      token,
+    }),
+};
+
 export const kyc = {
   queue: (status: KycStatus, token: string) =>
     apiFetch<KycDocumentRow[]>(`/kyc/queue?status=${status}`, { token }),

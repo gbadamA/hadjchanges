@@ -17,6 +17,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { QuotesModule } from './quotes/quotes.module';
 import { RatesModule } from './rates/rates.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { ReportingModule } from './reporting/reporting.module';
 import { SettingsModule } from './settings/settings.module';
 import { TransactionsModule } from './transactions/transactions.module';
 import { StorageModule } from './storage/storage.module';
@@ -42,6 +43,7 @@ import { UsersModule } from './users/users.module';
     QuotesModule,
     TransactionsModule,
     AgenciesModule,
+    ReportingModule,
   ],
   controllers: [HealthController],
   providers: [
