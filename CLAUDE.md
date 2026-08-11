@@ -33,7 +33,7 @@ Le cœur du produit tient en deux verrous :
 | **Mobile** | React **Expo 57** (RN 0.86, React 19.2) + Expo Router | Expo Go |
 | **Base** | PostgreSQL 16 (Docker) | **54360** |
 | **Emails (dev)** | Mailpit | **8036** |
-| Auth | JWT access court + refresh en cookie httpOnly ; 2FA sur les comptes internes | |
+| Auth | JWT access court + refresh à rotation stricte. **2FA : PAS encore implémenté** — les colonnes existent, le code non (cahier §4) | |
 | Fichiers | disque local en dev derrière un port `StorageService` (S3 en prod) | |
 | Temps réel | WebSocket (taux + statuts de transaction) | |
 | Notifications | Expo Push · WhatsApp Business / Twilio SMS · email | |
