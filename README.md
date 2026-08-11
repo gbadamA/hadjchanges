@@ -54,9 +54,24 @@ Scanner le QR avec **Expo Go**, téléphone et PC sur le même Wi-Fi.
 
 ---
 
+## Vérifier le socle
+
+```bash
+node scripts-verif/api-check.mjs
+```
+
+Comptes du seed : admin `0700000002` / `Admin@2026`, client vérifié `0709000001` / `Client@2026`
+(liste complète au §10 de [claudemap.md](claudemap.md)).
+
+---
+
 ## État
 
-Brique 0 (**scaffold**) posée : structure, documentation de fondation, modèle de données complet,
-design system des deux surfaces, configuration Docker et environnement.
-**Aucune dépendance n'est encore installée et rien ne tourne** — voir la roadmap au §9 de
-[CLAUDE.md](CLAUDE.md) pour la suite.
+- **Brique 0 — scaffold** 🟢 structure, documentation, modèle de données, design des deux surfaces.
+- **Brique 1 — socle** 🟢 migrations, auth JWT + RBAC, devises, taux versionnés, agences, audit,
+  seed ivoirien. Vérifié : `api-check.mjs` **39/39**, `tsc --noEmit` 0 erreur sur l'API et le mobile.
+- **Mobile** : écran « taux du jour » branché sur l'API réelle (Expo SDK 57).
+- **Dashboard** : design system posé, aucune page encore écrite.
+
+Suite : brique 2 (simulateur + verrou de taux + WebSocket). Roadmap complète au §9 de
+[CLAUDE.md](CLAUDE.md).

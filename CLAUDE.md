@@ -30,7 +30,7 @@ Le cœur du produit tient en deux verrous :
 |---|---|---|
 | **API** | NestJS 11 + Prisma 6 + PostgreSQL 16 | **3061** |
 | **Dashboard** | Next.js 15 (App Router) + Tailwind 3 | **3060** |
-| **Mobile** | React **Expo** 54 + Expo Router | Expo Go |
+| **Mobile** | React **Expo 57** (RN 0.86, React 19.2) + Expo Router | Expo Go |
 | **Base** | PostgreSQL 16 (Docker) | **54360** |
 | **Emails (dev)** | Mailpit | **8036** |
 | Auth | JWT access court + refresh en cookie httpOnly ; 2FA sur les comptes internes | |
@@ -196,8 +196,8 @@ les deux surfaces doivent se reconnaître au premier coup d'œil. Police Plus Ja
 | # | Brique | Contenu | Statut |
 |---|---|---|---|
 | 0 | **Scaffold** | structure, CLAUDE.md, claudemap, schéma Prisma, design system des deux surfaces | 🟢 |
-| 1 | **Socle** | Docker + migrations + auth JWT/RBAC + seed CI + devises & taux (CRUD versionné) | ⚪ |
-| 2 | **Simulateur** | taux publics + simulateur mobile + écran taux du jour + WebSocket | ⚪ |
+| 1 | **Socle** | Docker + migrations + auth JWT/RBAC + seed CI + devises & taux (CRUD versionné) | 🟢 |
+| 2 | **Simulateur** | simulateur mobile + verrou de taux + WebSocket (l'écran taux du jour est fait) | ⚪ |
 | 3 | **KYC** | inscription mobile, dépôt CNI/selfie, file de validation dashboard, notification | ⚪ |
 | 4 | **Transaction** | création + verrou de taux + import de reçu + file de validation + exécution du change | ⚪ |
 | 5 | **Suivi** | timeline mobile, historique filtrable, PDF de justificatif, export | ⚪ |
@@ -207,3 +207,33 @@ les deux surfaces doivent se reconnaître au premier coup d'œil. Police Plus Ja
 | 9 | **Notifications** | Expo Push + WhatsApp/SMS + alertes de taux favorable | ⚪ |
 
 Correspondance cahier §7 : phase 1 = briques 1-5, phase 2 = 6 + 9, phase 3 = 7 + 8.
+
+---
+
+## 10. Pièges déjà payés (ne pas les repayer)
+
+⚠️ **`nest build` sans `tsconfig.build.json` produit `dist/src/main.js`, pas `dist/main.js`.**
+Le `tsconfig.json` inclut `prisma/` pour que le seed soit typé ; du coup tsc calcule un `rootDir`
+commun à `src/` et `prisma/` et décale toute la sortie. Symptôme : `Cannot find module dist/main.js`
+alors que le build vient de réussir. `tsconfig.build.json` fixe `rootDir: ./src` et exclut `prisma`.
+Et **ne jamais mettre `incremental: true`** dans le tsconfig de l'API : `nest build` vide `dist/`
+mais le `.tsbuildinfo` survit, tsc croit tout à jour et n'émet qu'une partie des fichiers.
+
+⚠️ **Pas de `ValidationPipe` globale.** Elle exige `class-validator` au démarrage (l'API refuse de
+booter sans) alors que tout le projet valide en **Zod** via `@ZBody`. Deux piles de validation, c'est
+une de trop : celle qui reste est Zod, au plus près du contrat.
+
+⚠️ **Ne jamais laisser partir deux `/auth/refresh` concurrents.** La rotation est stricte : un jeton
+vu deux fois est traité comme un vol et **révoque toutes les sessions de l'utilisateur**. Le double
+montage d'effet de React en développement suffit à détruire la session à chaque ouverture. Côté
+client : une **promesse de rafraîchissement partagée** entre appelants simultanés. Ce n'est pas une
+optimisation, ne pas la retirer. (Vérifié par `scripts-verif/api-check.mjs`, qui teste justement que
+le rejeu coupe tout.)
+
+⚠️ **Les taux sont sérialisés en CHAÎNES, pas en nombres.** `Decimal` ne passe pas en JSON sans
+perte : `decimalToString` partout à la frontière, et côté client on garde la chaîne jusqu'à
+l'affichage (`formatRate`). Un `Number()` prématuré, c'est un écart de caisse plus tard.
+
+⚠️ **`.claude/launch.json` du poste n'accepte qu'un `cwd` RELATIF à la racine du workspace Jarvis.**
+Le projet vivant dans `C:\dev`, la configuration `hadjchanges-mobile-web` y est déclarée mais le
+serveur se démarre à la main (`npx expo start --web --port 8081`).

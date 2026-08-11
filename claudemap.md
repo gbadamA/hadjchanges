@@ -47,9 +47,9 @@ caisse tenue, tout tracé.
 
 | Brique | Dossier | Port | Statut | Rôle |
 |--------|---------|------|--------|------|
-| API | `api/` | 3061 | ⚪ scaffold | Cœur métier : taux, KYC, transactions, caisses, audit |
-| Dashboard | `admin/` | 3060 | ⚪ scaffold | Admin / opérateur : validation, pilotage, reporting |
-| Mobile | `mobile/` | Expo Go | ⚪ scaffold | Client final : taux, simulateur, transaction, suivi |
+| API | `api/` | 3061 | 🟢 socle (auth, RBAC, devises, taux, agences) | Cœur métier : taux, KYC, transactions, caisses, audit |
+| Dashboard | `admin/` | 3060 | ⚪ design system seul | Admin / opérateur : validation, pilotage, reporting |
+| Mobile | `mobile/` | Expo Go | 🟠 écran « taux du jour » branché sur l'API | Client final : taux, simulateur, transaction, suivi |
 
 ---
 
@@ -69,24 +69,29 @@ hadjchanges/
 │   │   ├── schema.prisma  🗄️ LE modèle de données (backbone) — voir §4
 │   │   └── seed.ts        🌱 devises, taux, agences d'Abidjan, comptes de démo
 │   └── src/
-│       ├── prisma/        accès DB (PrismaService @Global)
-│       ├── common/        guards JWT/Roles, @CurrentUser, filtres d'erreur
-│       ├── auth/          inscription, connexion, refresh, 2FA interne
-│       ├── users/         clients, plafonds, blocage
-│       ├── kyc/           dépôt de pièce + file de validation
-│       ├── currencies/    devises (CRUD)
-│       ├── rates/         taux versionnés + historique + alerte de fraîcheur
-│       ├── quotes/        simulation + verrouillage du taux
-│       ├── transactions/  state machine + exécution du change
-│       ├── receipts/      import + validation des preuves de paiement
-│       ├── agencies/      agences, affectation des opérateurs
-│       ├── cash/          soldes par devise, mouvements, clôture
-│       ├── compliance/    seuils LCB-FT, alertes
-│       ├── reporting/     volumes, commissions, exports
-│       ├── notifications/ Expo Push · WhatsApp/SMS · email
-│       ├── storage/       port fichiers (disque en dev, S3 en prod)
-│       ├── realtime/      passerelle WebSocket (taux + statuts)
-│       └── audit/         AuditService (traçabilité)
+│       ├── config/env.ts  🟢 validation Zod des variables AU DÉMARRAGE
+│       ├── prisma/        🟢 accès DB (PrismaService @Global)
+│       ├── common/        🟢 guards JWT/Roles, @CurrentUser, pont Zod, helpers Decimal
+│       ├── auth/          🟢 inscription, connexion, rotation stricte du refresh
+│       ├── users/         🟢 /users/me · (à venir : plafonds, blocage)
+│       ├── audit/         🟢 AuditService (traçabilité)
+│       ├── settings/      🟢 réglages base > env > défaut
+│       ├── currencies/    🟢 devises (CRUD)
+│       ├── rates/         🟢 taux versionnés + historique + variation + fraîcheur
+│       ├── agencies/      🟢 agences (CRUD)
+│       ├── kyc/           ⚪ dépôt de pièce + file de validation
+│       ├── quotes/        ⚪ simulation + verrouillage du taux
+│       ├── transactions/  ⚪ state machine + exécution du change
+│       ├── receipts/      ⚪ import + validation des preuves de paiement
+│       ├── cash/          ⚪ soldes par devise, mouvements, clôture
+│       ├── compliance/    ⚪ seuils LCB-FT, alertes
+│       ├── reporting/     ⚪ volumes, commissions, exports
+│       ├── notifications/ ⚪ Expo Push · WhatsApp/SMS · email
+│       ├── storage/       ⚪ port fichiers (disque en dev, S3 en prod)
+│       └── realtime/      ⚪ passerelle WebSocket (taux + statuts)
+│
+├── scripts-verif/
+│   └── api-check.mjs      ✅ vérification exécutable du socle (39 contrôles)
 │
 ├── admin/                 Next.js 15 (App Router)
 │   └── src/
@@ -101,12 +106,12 @@ hadjchanges/
     ├── app.json           ⚙️ Config Expo (safe-area, back gesture off)
     └── src/
         ├── theme.ts       🎨 Tokens (C couleurs, G dégradés, R, S, F, T, shadow)
-        ├── ui.tsx         🧱 Primitives SANS navigation (Button, Card, Field, OTP…)
-        ├── components.tsx 🧩 Composés métier (RateCard, TxTimeline, CurrencyPicker…)
-        ├── models.ts      📐 Types + helpers (fcfa, statuts, libellés)
+        ├── ui.tsx         🧱 Primitives SANS navigation (Screen, Card, Button, Badge…)
+        ├── components.tsx 🧩 Composés métier (RateCard · à venir : TxTimeline…)
+        ├── models.ts      📐 Types miroirs du contrat API + helpers (fcfa, formatRate)
         ├── api.ts         🔌 Client HTTP — 1 SEUL point d'accès réseau
         ├── useApi.ts      ⏳ Hook useAsync (loading / error / reload)
-        ├── auth.tsx       🔐 Auth JWT persistée (AsyncStorage)
+        ├── auth.tsx       ⚪ Auth JWT persistée (AsyncStorage) — à faire
         └── app/           🖥️ Écrans (Expo Router) — voir §6
 ```
 
@@ -186,7 +191,7 @@ index (Accueil public) 🌃  ── taux du jour + simulateur, SANS compte
 
 | Écran | Fichier | Point clé design |
 |---|---|---|
-| Accueil public | `app/index.tsx` | Bleu nuit immersif, halos, taux en direct, CTA « Simuler » |
+| Accueil public 🟢 | `app/index.tsx` | Bleu nuit immersif, halos, taux en direct, badge « à confirmer » si périmé |
 | Inscription/Connexion | `app/(auth)/…` | `FormScreen` : le clavier ne masque jamais le champ |
 | OTP | `app/(auth)/otp.tsx` | 5 cases, renvoi minuté |
 | KYC | `app/kyc.tsx` | Dépôt CNI + selfie, états en attente / rejeté (motif) / validé |
@@ -234,8 +239,9 @@ Un opérateur ne modifie **jamais** un taux ni un plafond, et ne voit que son ag
 
 ```
 [🟢] 0. Scaffold      structure + CLAUDE.md + claudemap + schéma Prisma + design des 2 surfaces
-[⚪] 1. Socle         Docker + migrations + auth JWT/RBAC + seed CI + devises & taux versionnés
-[⚪] 2. Simulateur    taux publics + simulateur mobile + WebSocket
+[🟢] 1. Socle         Docker + migrations + auth JWT/RBAC + seed CI + devises & taux versionnés
+                      → vérifié : scripts-verif/api-check.mjs, 39/39
+[⚪] 2. Simulateur    simulateur mobile + verrou de taux + WebSocket
 [⚪] 3. KYC           inscription + dépôt de pièce + file de validation + notification
 [⚪] 4. Transaction   verrou de taux + import de reçu + validation + exécution du change
 [⚪] 5. Suivi         timeline + historique + PDF de justificatif + export
@@ -284,4 +290,24 @@ cd C:/dev/hadjchanges/mobile && npm install && npx expo start
 ```
 
 Scanner le QR avec **Expo Go** (téléphone et PC sur le même Wi-Fi). L'IP de l'API se règle dans
-`mobile/src/api.ts` — `localhost` ne veut rien dire depuis un téléphone.
+`mobile/.env` (`EXPO_PUBLIC_API_URL`) — `localhost` ne veut rien dire depuis un téléphone.
+
+### Vérifier que le socle tient toujours
+
+```bash
+node C:/dev/hadjchanges/scripts-verif/api-check.mjs
+```
+
+39 contrôles de forme et de cohérence sur l'API (accès public, RBAC, append-only des taux, rotation
+des jetons). Il ne teste **aucune valeur de contenu** : le jeu de données peut changer sans le casser.
+
+### Comptes du seed
+
+| Rôle | Identifiant | Mot de passe |
+|---|---|---|
+| Super-admin | `0700000001` | `Admin@2026` |
+| Admin | `0700000002` | `Admin@2026` |
+| Opérateur (Plateau) | `0700000003` | `Admin@2026` |
+| Client KYC validé | `0709000001` | `Client@2026` |
+| Client KYC en attente | `0709000002` | `Client@2026` |
+| Client KYC rejeté | `0709000003` | `Client@2026` |

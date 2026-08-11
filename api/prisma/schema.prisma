@@ -148,6 +148,7 @@ model User {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
+  refreshTokens     RefreshToken[]
   kycDocuments      KycDocument[]
   transactions      Transaction[]     @relation("ClientTransactions")
   handledTxns       Transaction[]     @relation("OperatorTransactions")
@@ -163,6 +164,27 @@ model User {
 
   @@index([role])
   @@index([kycStatus])
+}
+
+/// Session de rafraîchissement. Le jeton n'est JAMAIS stocké en clair : on garde
+/// son empreinte. Rotation stricte — un jeton déjà consommé qui revient est
+/// traité comme un vol et coupe toutes les sessions de l'utilisateur.
+/// ⚠️ Corollaire côté client : ne jamais laisser partir deux /auth/refresh
+/// concurrents (promesse de rafraîchissement partagée). Leçon FI-HADJ.
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  /// Renseigné à la rotation : permet de distinguer « consommé » de « révoqué ».
+  replacedById String?
+  userAgent String?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, revokedAt])
 }
 
 model KycDocument {
