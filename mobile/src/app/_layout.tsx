@@ -10,7 +10,16 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import type { ReactNode } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AuthProvider, useAuth } from '../auth';
 import { Loader } from '../ui';
+
+function Navigation(): ReactNode {
+  const { booting } = useAuth();
+  if (booting) return <Loader label="Ouverture de la session…" />;
+  return (
+    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#F5F8FC' } }} />
+  );
+}
 
 export default function RootLayout(): ReactNode {
   const [fontsLoaded] = useFonts({
@@ -26,7 +35,9 @@ export default function RootLayout(): ReactNode {
       {/* En-tête immersif bleu nuit : le texte de la barre système doit être clair. */}
       <StatusBar style="light" />
       {fontsLoaded ? (
-        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#F5F8FC' } }} />
+        <AuthProvider>
+          <Navigation />
+        </AuthProvider>
       ) : (
         <Loader label="Chargement…" />
       )}

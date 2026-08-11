@@ -10,7 +10,9 @@ import { loadEnv } from './config/env';
 import { CurrenciesModule } from './currencies/currencies.module';
 import { HealthController } from './health.controller';
 import { PrismaModule } from './prisma/prisma.module';
+import { QuotesModule } from './quotes/quotes.module';
 import { RatesModule } from './rates/rates.module';
+import { RealtimeModule } from './realtime/realtime.module';
 import { SettingsModule } from './settings/settings.module';
 import { UsersModule } from './users/users.module';
 
@@ -24,7 +26,9 @@ import { UsersModule } from './users/users.module';
     AuthModule,
     UsersModule,
     CurrenciesModule,
+    RealtimeModule,
     RatesModule,
+    QuotesModule,
     AgenciesModule,
   ],
   controllers: [HealthController],

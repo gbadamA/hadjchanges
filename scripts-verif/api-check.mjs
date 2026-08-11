@@ -279,6 +279,177 @@ async function main() {
     );
   }
 
+  // -------------------------------------------------------------- simulation --
+  section('Simulation et verrou de taux');
+  const eurRate = board.find((row) => row.currency.code === 'EUR');
+  {
+    // Le simulateur doit être utilisable SANS compte : c'est la vitrine.
+    const { status, data } = await call('POST', '/quotes/simulate', {
+      body: { direction: 'VENTE_DEVISE', currencyCode: 'EUR', amount: 500_000, side: 'SOURCE' },
+    });
+    check('POST /quotes/simulate est public (200)', status === 200, `reçu ${status}`);
+    check('la simulation part du FCFA vers la devise', data?.sourceCurrency === 'XOF' && data?.targetCurrency === 'EUR');
+    check('aucun verrou sur une simple simulation', data?.lockedUntil === null && data?.id === null);
+
+    // Cohérence arithmétique : on refait le calcul depuis le tableau des taux.
+    const { data: freshBoard } = await call('GET', '/rates');
+    const eur = (freshBoard ?? []).find((row) => row.currency.code === 'EUR');
+    const pct = Number(eur.commissionPct);
+    const commission = Math.round(500_000 * (pct / 100));
+    const expected = (500_000 - commission) / Number(eur.sellRate);
+    check(
+      'la commission est prélevée sur la jambe FCFA',
+      Number(data?.commissionAmount) === commission,
+      `attendu ${commission}, reçu ${data?.commissionAmount}`,
+    );
+    check(
+      'le montant reçu correspond au taux de VENTE',
+      Math.abs(Number(data?.targetAmount) - expected) < 0.02,
+      `attendu ~${expected.toFixed(2)}, reçu ${data?.targetAmount}`,
+    );
+    check('le taux appliqué est celui du tableau', data?.appliedRate === eur.sellRate);
+  }
+  {
+    // Saisie inverse : « je veux recevoir exactement 300 € ».
+    const { status, data } = await call('POST', '/quotes/simulate', {
+      body: { direction: 'VENTE_DEVISE', currencyCode: 'EUR', amount: 300, side: 'TARGET' },
+    });
+    check('la saisie inverse est acceptée (200)', status === 200, `reçu ${status}`);
+    check('le montant demandé est servi exactement', Number(data?.targetAmount) === 300);
+
+    // Aller-retour : payer ce montant doit bien redonner ~300 €.
+    const back = await call('POST', '/quotes/simulate', {
+      body: {
+        direction: 'VENTE_DEVISE',
+        currencyCode: 'EUR',
+        amount: Number(data?.sourceAmount),
+        side: 'SOURCE',
+      },
+    });
+    check(
+      'l’aller-retour saisie inverse → saisie directe est cohérent',
+      Math.abs(Number(back.data?.targetAmount) - 300) < 1,
+      `retour ${back.data?.targetAmount} €`,
+    );
+  }
+  {
+    const { status, data } = await call('POST', '/quotes/simulate', {
+      body: { direction: 'ACHAT_DEVISE', currencyCode: 'EUR', amount: 200, side: 'SOURCE' },
+    });
+    check('le sens achat de devise inverse les jambes', data?.sourceCurrency === 'EUR' && data?.targetCurrency === 'XOF', `reçu ${status}`);
+    const gross = Math.round(200 * Number(eurRate.buyRate));
+    check(
+      'le sens achat applique le taux d’ACHAT',
+      Number(data?.amountXof) === gross,
+      `attendu ${gross}, reçu ${data?.amountXof}`,
+    );
+    check(
+      'le client reçoit le brut moins la commission',
+      Number(data?.targetAmount) === gross - Number(data?.commissionAmount),
+    );
+  }
+  {
+    const { status } = await call('POST', '/quotes/simulate', {
+      body: { direction: 'VENTE_DEVISE', currencyCode: 'XOF', amount: 1000 },
+    });
+    check('changer du FCFA contre du FCFA est refusé (400)', status === 400, `reçu ${status}`);
+  }
+  {
+    const { status } = await call('POST', '/quotes/simulate', {
+      body: { direction: 'VENTE_DEVISE', currencyCode: 'EUR', amount: -5 },
+    });
+    check('un montant négatif est refusé (400)', status === 400, `reçu ${status}`);
+  }
+
+  // Verrouillage : engage le bureau, donc compte obligatoire.
+  {
+    const anonymous = await call('POST', '/quotes/lock', {
+      body: { direction: 'VENTE_DEVISE', currencyCode: 'EUR', amount: 100_000 },
+    });
+    check('verrouiller sans compte est refusé (401)', anonymous.status === 401, `reçu ${anonymous.status}`);
+
+    const byAdmin = await call('POST', '/quotes/lock', {
+      token: admin.accessToken,
+      body: { direction: 'VENTE_DEVISE', currencyCode: 'EUR', amount: 100_000 },
+    });
+    check('un compte interne ne verrouille pas un taux (403)', byAdmin.status === 403, `reçu ${byAdmin.status}`);
+
+    const locked = await call('POST', '/quotes/lock', {
+      token: client.accessToken,
+      body: { direction: 'VENTE_DEVISE', currencyCode: 'EUR', amount: 100_000 },
+    });
+    check('un client verrouille son taux (201)', locked.status === 201, `reçu ${locked.status}`);
+    check('le devis porte une référence lisible', /^DEV-\d{4}-\d{6}$/.test(locked.data?.reference ?? ''), String(locked.data?.reference));
+
+    const remaining = (new Date(locked.data?.lockedUntil).getTime() - Date.now()) / 60_000;
+    check(
+      'le verrou a une échéance de 30 min (± 1)',
+      remaining > 29 && remaining <= 30,
+      `${remaining.toFixed(1)} min`,
+    );
+
+    const owned = await call('GET', `/quotes/${locked.data?.id}`, { token: client.accessToken });
+    check('le client relit son devis (200)', owned.status === 200, `reçu ${owned.status}`);
+    check('le devis relu porte le même prix', owned.data?.targetAmount === locked.data?.targetAmount);
+
+    // Un devis appartient à une personne : les autres ne doivent pas le voir.
+    const other = await login({ identifier: '0709000002', password: CLIENT.password });
+    const stolen = await call('GET', `/quotes/${locked.data?.id}`, { token: other.accessToken });
+    check('le devis d’autrui est introuvable (404)', stolen.status === 404, `reçu ${stolen.status}`);
+
+    // Le verrou tient bon même si le taux bouge juste après.
+    const bumped = Number(eurRate.sellRate) + 5;
+    await call('POST', '/rates', {
+      token: admin.accessToken,
+      body: { currencyCode: 'EUR', buyRate: Number(eurRate.buyRate), sellRate: bumped, commissionPct: 1 },
+    });
+    const afterMove = await call('GET', `/quotes/${locked.data?.id}`, { token: client.accessToken });
+    check(
+      'un taux publié après coup ne réécrit pas le devis verrouillé',
+      afterMove.data?.appliedRate === locked.data?.appliedRate,
+      `${locked.data?.appliedRate} → ${afterMove.data?.appliedRate}`,
+    );
+  }
+
+  // ------------------------------------------------------------- temps réel --
+  section('Diffusion des taux en direct');
+  {
+    let io = null;
+    try {
+      ({ io } = await import('socket.io-client'));
+    } catch {
+      io = null;
+    }
+    if (!io) {
+      skip('diffusion WebSocket', 'socket.io-client absent — npm install dans scripts-verif/');
+    } else {
+      const socket = io(`${BASE}/rates`, { transports: ['websocket'], timeout: 5000 });
+      const received = new Promise((resolve) => {
+        socket.on('rates:updated', resolve);
+        setTimeout(() => resolve(null), 8000);
+      });
+      await new Promise((resolve) => {
+        socket.on('connect', resolve);
+        setTimeout(resolve, 5000);
+      });
+      check('connexion à la passerelle /rates', socket.connected);
+
+      const target = Number(eurRate.sellRate) + 7;
+      await call('POST', '/rates', {
+        token: admin.accessToken,
+        body: { currencyCode: 'EUR', buyRate: Number(eurRate.buyRate), sellRate: target, commissionPct: 1 },
+      });
+      const event = await received;
+      check('une publication de taux est diffusée sans requête HTTP', event !== null);
+      check(
+        'l’événement porte la ligne complète, pas un simple identifiant',
+        event?.currency?.code === 'EUR' && Number(event?.sellRate) === target,
+        JSON.stringify(event?.currency ?? null),
+      );
+      socket.close();
+    }
+  }
+
   // ------------------------------------------------------------------ bilan --
   console.log(`\n${'='.repeat(60)}`);
   console.log(`${passed} vérifications passées · ${failed} échouées · ${skipped} ignorées`);

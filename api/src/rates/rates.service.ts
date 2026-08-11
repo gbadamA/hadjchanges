@@ -4,6 +4,7 @@ import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../common/auth-user';
 import { decimalToString, roundRate } from '../common/money';
 import { PrismaService } from '../prisma/prisma.service';
+import { RatesGateway } from '../realtime/rates.gateway';
 import { SettingsService } from '../settings/settings.service';
 import { RatesRepository } from './rates.repository';
 import type { PublishRateInput } from './rates.schemas';
@@ -33,6 +34,7 @@ export class RatesService {
     private readonly rates: RatesRepository,
     private readonly settings: SettingsService,
     private readonly audit: AuditService,
+    private readonly gateway: RatesGateway,
   ) {}
 
   /**
@@ -127,6 +129,11 @@ export class RatesService {
       after: { buyRate: created.buyRate.toString(), sellRate: created.sellRate.toString() },
       ip,
     });
+
+    // Diffusion immédiate : un taux publié qui met dix minutes à apparaître sur
+    // les téléphones est un taux faux pendant dix minutes.
+    const staleBefore = new Date(Date.now() - (await this.settings.rateStaleHours()) * 3_600_000);
+    this.gateway.broadcast(this.toRow(currency, created, previous, staleBefore), created.agencyId);
 
     return {
       ...created,

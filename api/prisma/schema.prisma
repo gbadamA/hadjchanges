@@ -149,6 +149,7 @@ model User {
   updatedAt   DateTime  @updatedAt
 
   refreshTokens     RefreshToken[]
+  quotes            Quote[]
   kycDocuments      KycDocument[]
   transactions      Transaction[]     @relation("ClientTransactions")
   handledTxns       Transaction[]     @relation("OperatorTransactions")
@@ -232,6 +233,7 @@ model Agency {
   movements     CashMovement[]
   rates         ExchangeRate[]
   transactions  Transaction[]
+  quotes        Quote[]
 }
 
 /// Solde de caisse courant, par agence et par devise. Dénormalisé à dessein :
@@ -294,6 +296,8 @@ model Currency {
   movements    CashMovement[]
   sourceTxns   Transaction[]  @relation("SourceCurrency")
   targetTxns   Transaction[]  @relation("TargetCurrency")
+  sourceQuotes Quote[]        @relation("QuoteSourceCurrency")
+  targetQuotes Quote[]        @relation("QuoteTargetCurrency")
   rateAlerts   RateAlert[]
 }
 
@@ -325,8 +329,54 @@ model ExchangeRate {
   createdAt     DateTime @default(now())
 
   transactions Transaction[]
+  quotes       Quote[]
 
   @@index([currencyId, agencyId, effectiveFrom])
+}
+
+/// Devis : une simulation dont le client a **verrouillé le taux**.
+///
+/// C'est la matérialisation de la décision produit (CLAUDE.md §6) : le taux est
+/// figé, mais pas indéfiniment. Passé `lockedUntil`, le devis est périmé et la
+/// transaction doit être recalculée — un bureau de change ne porte pas un
+/// risque de marché ouvert.
+///
+/// Le devis est CONSOMMÉ une seule fois (`consumedAt`) quand il devient une
+/// transaction : deux transactions ne peuvent pas s'adosser au même verrou.
+model Quote {
+  id        String @id @default(cuid())
+  /// Référence lisible communiquée au client : DEV-2026-000123.
+  reference String @unique
+
+  clientId String
+  client   User   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  direction        TransactionDirection
+  sourceCurrencyId String
+  sourceCurrency   Currency             @relation("QuoteSourceCurrency", fields: [sourceCurrencyId], references: [id])
+  targetCurrencyId String
+  targetCurrency   Currency             @relation("QuoteTargetCurrency", fields: [targetCurrencyId], references: [id])
+
+  sourceAmount     Decimal @db.Decimal(18, 2)
+  targetAmount     Decimal @db.Decimal(18, 2)
+  appliedRate      Decimal @db.Decimal(18, 6)
+  commissionPct    Decimal @db.Decimal(5, 2)
+  commissionAmount Decimal @db.Decimal(18, 2)
+  amountXof        Decimal @db.Decimal(18, 2)
+
+  rateId String
+  rate   ExchangeRate @relation(fields: [rateId], references: [id])
+
+  agencyId String?
+  agency   Agency? @relation(fields: [agencyId], references: [id])
+
+  lockedUntil DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  transaction Transaction?
+
+  @@index([clientId, createdAt])
 }
 
 // ---------------------------------------------------------------------------
@@ -366,6 +416,11 @@ model Transaction {
 
   rateId String?
   rate   ExchangeRate? @relation(fields: [rateId], references: [id])
+
+  /// Devis d'origine, quand la transaction naît d'un taux verrouillé.
+  /// Unique : un verrou ne sert qu'une fois.
+  quoteId String? @unique
+  quote   Quote?  @relation(fields: [quoteId], references: [id])
   /// Verrouillage du taux : au-delà, la transaction est recalculée au taux du
   /// moment (décision produit — voir CLAUDE.md §6).
   rateLockedUntil DateTime?

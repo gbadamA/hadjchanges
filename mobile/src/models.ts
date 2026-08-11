@@ -29,6 +29,28 @@ export interface RateRow {
   agencyId: string | null;
 }
 
+/** Sens de l'opération, vu du bureau (identique à l'enum Prisma). */
+export type TransactionDirection = 'ACHAT_DEVISE' | 'VENTE_DEVISE';
+
+/**
+ * Résultat d'une simulation. `lockedUntil` et `id` valent null tant que le
+ * client n'a pas verrouillé : une simulation n'est pas une promesse.
+ */
+export interface Quote {
+  id: string | null;
+  reference: string | null;
+  direction: TransactionDirection;
+  sourceCurrency: string;
+  targetCurrency: string;
+  sourceAmount: string;
+  targetAmount: string;
+  appliedRate: string;
+  commissionPct: string;
+  commissionAmount: string;
+  amountXof: string;
+  lockedUntil: string | null;
+}
+
 export type KycStatus = 'NON_SOUMIS' | 'EN_ATTENTE' | 'VALIDE' | 'REJETE';
 
 export interface Profile {
@@ -62,6 +84,26 @@ export const formatRate = (value: string): string => {
   const amount = Number(value);
   if (Number.isNaN(amount)) return value;
   return amount.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+/** Montant dans une devise quelconque, avec le bon nombre de décimales. */
+export const money = (value: string | number, decimals: number, symbol: string): string => {
+  const amount = typeof value === 'string' ? Number(value) : value;
+  if (Number.isNaN(amount)) return '—';
+  const formatted = amount.toLocaleString('fr-FR', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+  return `${formatted} ${symbol}`;
+};
+
+/** Compte à rebours d'un verrou : « 28 min 04 s ». Vide si l'échéance est passée. */
+export const countdown = (iso: string, now: number = Date.now()): string => {
+  const remaining = Math.max(0, new Date(iso).getTime() - now);
+  if (remaining === 0) return '';
+  const minutes = Math.floor(remaining / 60_000);
+  const seconds = Math.floor((remaining % 60_000) / 1000);
+  return `${minutes} min ${String(seconds).padStart(2, '0')} s`;
 };
 
 /** « il y a 2 h », « il y a 3 j » — fraîcheur d'un taux. */

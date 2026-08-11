@@ -2,10 +2,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import type { ReactNode } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   type StyleProp,
   type ViewStyle,
@@ -145,6 +148,114 @@ export function Button({
   );
 }
 
+/**
+ * Écran de saisie. Le clavier ne doit JAMAIS masquer le champ actif : c'est une
+ * exigence de conception, pas un détail (CLAUDE.md §7). Tout écran avec un
+ * champ passe par ici — jamais un `ScrollView` nu.
+ */
+export function FormScreen({ children }: { children: ReactNode }): ReactNode {
+  const insets = useSafeAreaInsets();
+  return (
+    <KeyboardAvoidingView
+      style={styles.screen}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={0}
+    >
+      <ScrollView
+        contentContainerStyle={[styles.formContent, { paddingBottom: insets.bottom + S.huge }]}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        showsVerticalScrollIndicator={false}
+      >
+        {children}
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+export function Field({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType = 'default',
+  secureTextEntry = false,
+  autoCapitalize = 'sentences',
+  suffix,
+  error,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (text: string) => void;
+  placeholder?: string;
+  keyboardType?: 'default' | 'numeric' | 'phone-pad' | 'email-address';
+  secureTextEntry?: boolean;
+  autoCapitalize?: 'none' | 'sentences' | 'words';
+  suffix?: string;
+  error?: string | null;
+}): ReactNode {
+  return (
+    <View style={styles.field}>
+      <Text style={T.label}>{label}</Text>
+      <View style={[styles.inputRow, error ? styles.inputError : null]}>
+        <TextInput
+          style={styles.input}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={C.textMute}
+          keyboardType={keyboardType}
+          secureTextEntry={secureTextEntry}
+          autoCapitalize={autoCapitalize}
+          autoCorrect={false}
+        />
+        {suffix ? <Text style={styles.suffix}>{suffix}</Text> : null}
+      </View>
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+    </View>
+  );
+}
+
+/** Sélecteur à deux ou trois options — le sens de l'opération, par exemple. */
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: Array<{ value: T; label: string }>;
+  value: T;
+  onChange: (value: T) => void;
+}): ReactNode {
+  return (
+    <View style={styles.segmented}>
+      {options.map((option) => {
+        const active = option.value === value;
+        return (
+          <Pressable
+            key={option.value}
+            onPress={() => onChange(option.value)}
+            style={[styles.segment, active && styles.segmentActive]}
+          >
+            <Text style={[styles.segmentLabel, active && styles.segmentLabelActive]}>
+              {option.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/** Bandeau d'erreur d'un formulaire — toujours visible, jamais en console. */
+export function ErrorBanner({ message }: { message: string | null }): ReactNode {
+  if (!message) return null;
+  return (
+    <View style={styles.errorBanner}>
+      <Text style={styles.errorBannerText}>{message}</Text>
+    </View>
+  );
+}
+
 export function Loader({ label }: { label?: string }): ReactNode {
   return (
     <View style={styles.centered}>
@@ -233,6 +344,40 @@ const styles = StyleSheet.create({
   ghostLabel: { ...T.title, color: C.navy },
   pressed: { transform: [{ scale: 0.97 }], opacity: 0.92 },
   disabled: { opacity: 0.45 },
+  formContent: { padding: S.lg, gap: S.lg },
+  field: { gap: S.xs },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.surface,
+    borderRadius: R.md,
+    borderWidth: 1.5,
+    borderColor: C.line,
+    paddingHorizontal: S.lg,
+  },
+  input: { ...T.body, flex: 1, paddingVertical: S.lg },
+  suffix: { ...T.label, color: C.textMute },
+  inputError: { borderColor: C.stop },
+  errorText: { ...T.caption, color: C.stop },
+  errorBanner: {
+    backgroundColor: C.stopSoft,
+    borderRadius: R.md,
+    padding: S.md,
+    borderLeftWidth: 3,
+    borderLeftColor: C.stop,
+  },
+  errorBannerText: { ...T.bodyMute, color: C.stop },
+  segmented: {
+    flexDirection: 'row',
+    backgroundColor: C.surface2,
+    borderRadius: R.pill,
+    padding: 4,
+    gap: 4,
+  },
+  segment: { flex: 1, paddingVertical: S.md, borderRadius: R.pill, alignItems: 'center' },
+  segmentActive: { backgroundColor: C.navy },
+  segmentLabel: { ...T.label, color: C.inkDim },
+  segmentLabelActive: { color: C.onDark },
   centered: { alignItems: 'center', justifyContent: 'center', padding: S.xxl, gap: S.sm },
   centeredText: { textAlign: 'center' },
 });

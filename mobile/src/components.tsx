@@ -16,11 +16,15 @@ const TREND_ICON = {
   flat: 'remove' as const,
 };
 
-/** Carte d'une devise dans le tableau des taux du jour. */
-export function RateCard({ row }: { row: RateRow }): ReactNode {
+/**
+ * Carte d'une devise dans le tableau des taux du jour.
+ * `highlight` s'allume brièvement quand la mise à jour vient d'arriver par
+ * WebSocket : sans ce signal, un chiffre qui change tout seul passe inaperçu.
+ */
+export function RateCard({ row, highlight = false }: { row: RateRow; highlight?: boolean }): ReactNode {
   const color = TREND[row.trend];
   return (
-    <Card style={styles.card}>
+    <Card style={[styles.card, highlight && styles.highlight]}>
       <View style={styles.head}>
         <View style={styles.identity}>
           <View style={styles.symbolBubble}>
@@ -82,6 +86,7 @@ function Quote({
 
 const styles = StyleSheet.create({
   card: { gap: S.md },
+  highlight: { borderColor: C.gold, backgroundColor: C.goldSoft },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   identity: { flexDirection: 'row', alignItems: 'center', gap: S.md, flexShrink: 1 },
   symbolBubble: {

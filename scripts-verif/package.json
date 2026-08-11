@@ -1,0 +1,10 @@
+{
+  "name": "hadjchanges-scripts-verif",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Dépendances des vérifications exécutables. Rien de tout ceci ne part en production.",
+  "dependencies": {
+    "socket.io-client": "^4.8.1"
+  }
+}

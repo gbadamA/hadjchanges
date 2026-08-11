@@ -110,6 +110,12 @@ Les transitions invalides sont refusées **côté service** par une state machin
 
 ## 6. Décisions actées
 
+- ✅ **Le verrou est un objet à part entière** (`Quote`), pas un champ sur la transaction. Une
+  simulation ne persiste rien ; verrouiller crée un devis daté, nominatif et **consommable une seule
+  fois** (`consumedAt`) — deux transactions ne peuvent pas s'adosser au même prix garanti.
+- ✅ **Verrouiller exige un compte, pas un KYC validé.** Le verrou engage le bureau sur un prix : il
+  faut savoir envers qui. Mais un client dont la pièce est en cours de vérification doit pouvoir
+  préparer son opération — le KYC bloque la transaction (brique 4), pas la préparation.
 - ✅ **Taux verrouillé à la simulation**, avec une **durée de validité** (`rateLockedUntil`, réglage
   `rateLockMinutes`, défaut 30 min). Le cahier §3.2-6 laissait la question ouverte : elle est tranchée.
   Passé le délai, la transaction est recalculée au taux du moment et le client doit reconfirmer.
@@ -197,8 +203,8 @@ les deux surfaces doivent se reconnaître au premier coup d'œil. Police Plus Ja
 |---|---|---|---|
 | 0 | **Scaffold** | structure, CLAUDE.md, claudemap, schéma Prisma, design system des deux surfaces | 🟢 |
 | 1 | **Socle** | Docker + migrations + auth JWT/RBAC + seed CI + devises & taux (CRUD versionné) | 🟢 |
-| 2 | **Simulateur** | simulateur mobile + verrou de taux + WebSocket (l'écran taux du jour est fait) | ⚪ |
-| 3 | **KYC** | inscription mobile, dépôt CNI/selfie, file de validation dashboard, notification | ⚪ |
+| 2 | **Simulateur** | simulateur mobile + verrou de taux (`Quote`) + WebSocket + auth mobile | 🟢 |
+| 3 | **KYC** | dépôt CNI/selfie, file de validation dashboard, notification | ⚪ |
 | 4 | **Transaction** | création + verrou de taux + import de reçu + file de validation + exécution du change | ⚪ |
 | 5 | **Suivi** | timeline mobile, historique filtrable, PDF de justificatif, export | ⚪ |
 | 6 | **Caisses** | agences, soldes par devise, mouvements, clôture journalière | ⚪ |
@@ -233,6 +239,16 @@ le rejeu coupe tout.)
 ⚠️ **Les taux sont sérialisés en CHAÎNES, pas en nombres.** `Decimal` ne passe pas en JSON sans
 perte : `decimalToString` partout à la frontière, et côté client on garde la chaîne jusqu'à
 l'affichage (`formatRate`). Un `Number()` prématuré, c'est un écart de caisse plus tard.
+
+⚠️ **`socket.io-client` ne se bundle pas sous Metro sans `unstable_enablePackageExports`.**
+Erreur trompeuse : `Unable to resolve "./contrib/parseuri.js" from engine.io-client` — un fichier qui
+existe pourtant. Correctif dans `mobile/metro.config.js`. Ne pas le supprimer en croyant à un
+reliquat : sans lui, l'app ne bundle plus du tout.
+
+⚠️ **Le calcul du change n'existe qu'à UN endroit** : `api/src/quotes/quote-calculator.ts`. Le
+simulateur, le verrou et (bientôt) l'exécution de la transaction l'appellent tous. Ne jamais
+recopier cette arithmétique dans un écran ou un service : deux calculs qui divergent, c'est un écart
+de caisse à la fin du mois. **La commission se prélève toujours sur la jambe en XOF.**
 
 ⚠️ **`.claude/launch.json` du poste n'accepte qu'un `cwd` RELATIF à la racine du workspace Jarvis.**
 Le projet vivant dans `C:\dev`, la configuration `hadjchanges-mobile-web` y est déclarée mais le

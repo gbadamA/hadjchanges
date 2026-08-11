@@ -69,9 +69,15 @@ Comptes du seed : admin `0700000002` / `Admin@2026`, client vérifié `070900000
 
 - **Brique 0 — scaffold** 🟢 structure, documentation, modèle de données, design des deux surfaces.
 - **Brique 1 — socle** 🟢 migrations, auth JWT + RBAC, devises, taux versionnés, agences, audit,
-  seed ivoirien. Vérifié : `api-check.mjs` **39/39**, `tsc --noEmit` 0 erreur sur l'API et le mobile.
-- **Mobile** : écran « taux du jour » branché sur l'API réelle (Expo SDK 57).
+  seed ivoirien.
+- **Brique 2 — simulateur** 🟢 simulation publique, verrou de taux (`Quote`), diffusion des taux
+  en direct par WebSocket, comptes clients sur mobile.
+- **Mobile** (Expo SDK 57) : taux du jour poussés en direct, simulateur, verrou, inscription,
+  connexion, compte.
 - **Dashboard** : design system posé, aucune page encore écrite.
 
-Suite : brique 2 (simulateur + verrou de taux + WebSocket). Roadmap complète au §9 de
+Vérifié : `api-check.mjs` **65/65**, `tsc --noEmit` 0 erreur sur l'API et le mobile, rendu et
+mise à jour en direct confirmés dans le navigateur.
+
+Suite : brique 3 (KYC — dépôt de pièce et file de validation). Roadmap complète au §9 de
 [CLAUDE.md](CLAUDE.md).
