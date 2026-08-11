@@ -48,7 +48,7 @@ caisse tenue, tout tracé.
 | Brique | Dossier | Port | Statut | Rôle |
 |--------|---------|------|--------|------|
 | API | `api/` | 3061 | 🟢 auth, taux, simulation, KYC, **transactions + reçus + caisse**, audit | Cœur métier : taux, KYC, transactions, caisses, audit |
-| Dashboard | `admin/` | 3060 | 🟠 connexion, identités, **reçus**, **transactions** | Admin / opérateur : validation, pilotage, reporting |
+| Dashboard | `admin/` | 3060 | 🟠 identités, reçus, transactions, **caisses** | Admin / opérateur : validation, pilotage, reporting |
 | Mobile | `mobile/` | Expo Go | 🟢 taux, simulateur, KYC, **opération complète + suivi** | Client final : taux, simulateur, transaction, suivi |
 
 ---
@@ -139,7 +139,8 @@ User ─┬─ KycDocument          Currency               Transaction ─┬─
                                                       ──────
 ADMIN                                                 Agency ─┬─ CashBalance  (cache)
 ─────                                                         ├─ CashMovement (vérité)
-AuditLog · Setting                                            └─ User (opérateurs)
+AuditLog · Setting                                            ├─ CashClosure ─ Line
+                                                              └─ User (opérateurs)
 ```
 
 Quatre groupes : **identité/conformité** (KYC, plafonds, alertes LCB-FT), **devises/taux** (table
