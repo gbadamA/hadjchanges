@@ -23,12 +23,13 @@ export const NAVIGATION: NavItem[] = [
   { href: '/recus', label: 'Reçus de paiement', roles: ALL_STAFF, ready: true },
   { href: '/transactions', label: 'Transactions', roles: ALL_STAFF, ready: true },
   { href: '/taux', label: 'Taux', roles: MANAGERS, ready: false },
-  { href: '/clients', label: 'Clients', roles: MANAGERS, ready: false },
+  { href: '/clients', label: 'Clients', roles: MANAGERS, ready: true },
   { href: '/caisses', label: 'Caisses', roles: ALL_STAFF, ready: true },
   { href: '/agences', label: 'Agences', roles: MANAGERS, ready: false },
   { href: '/rapports', label: 'Rapports', roles: ALL_STAFF, ready: true },
   { href: '/equipe', label: 'Équipe', roles: ['SUPER_ADMIN'], ready: false },
-  { href: '/audit', label: 'Journal d’audit', roles: MANAGERS, ready: false },
+  { href: '/conformite', label: 'Conformité', roles: MANAGERS, ready: true },
+  { href: '/audit', label: 'Journal d’audit', roles: MANAGERS, ready: true },
 ];
 
 export const navigationFor = (role: Role): NavItem[] =>

@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { Role } from '@prisma/client';
@@ -39,7 +39,15 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       select: { id: true, role: true, agencyId: true, blocked: true },
     });
     if (!user) throw new UnauthorizedException('Compte introuvable.');
-    if (user.blocked) throw new UnauthorizedException('Compte bloqué.');
+    // ⚠️ 403 et non 401 : l'identité est établie, c'est l'ACCÈS qui est refusé.
+    // Un 401 déclencherait un rafraîchissement côté client, puis une
+    // déconnexion silencieuse — l'utilisateur se retrouverait dehors sans
+    // jamais savoir pourquoi.
+    if (user.blocked) {
+      throw new ForbiddenException(
+        'Votre compte est bloqué. Contactez le bureau pour en connaître la raison.',
+      );
+    }
     return { id: user.id, role: user.role, agencyId: user.agencyId };
   }
 }

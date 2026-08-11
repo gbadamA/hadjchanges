@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { CashModule } from './cash/cash.module';
 import { JwtAuthGuard, RolesGuard } from './common/guards';
 import { loadEnv } from './config/env';
+import { ComplianceModule } from './compliance/compliance.module';
 import { CurrenciesModule } from './currencies/currencies.module';
 import { DocumentsModule } from './documents/documents.module';
 import { HealthController } from './health.controller';
@@ -34,6 +35,7 @@ import { UsersModule } from './users/users.module';
     NotificationsModule,
     CashModule,
     DocumentsModule,
+    ComplianceModule,
     AuthModule,
     UsersModule,
     KycModule,

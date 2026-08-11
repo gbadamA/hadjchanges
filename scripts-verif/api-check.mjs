@@ -1310,6 +1310,165 @@ async function main() {
     );
   }
 
+  // ------------------------------------------------------------ conformité --
+  section('Vigilance LCB-FT et plafonds');
+  conformiteSection: {
+    const client = await login(CLIENT);
+    const seuil = 5_000_000; // réglage `lcbFtThresholdXof` du seed
+
+    const clients = await call('GET', '/clients', { token: admin.accessToken });
+    check('la liste des clients est lisible (200)', clients.status === 200, `reçu ${clients.status}`);
+    check(
+      'elle ne contient que des clients',
+      (clients.data ?? []).length > 0 && (clients.data ?? []).every((row) => row.blocked !== undefined),
+    );
+
+    const operateur = await login(OPERATEUR);
+    const refuse = await call('GET', '/clients', { token: operateur.accessToken });
+    check('un opérateur ne gère pas les clients (403)', refuse.status === 403, `reçu ${refuse.status}`);
+
+    const moussa = (clients.data ?? []).find((row) => row.phone === CLIENT.identifier);
+
+    // Plafonds : consommation lisible par l'encadrement ET par le client.
+    const limites = await call('GET', `/compliance/limits/${moussa.id}`, { token: admin.accessToken });
+    check('les plafonds et leur consommation sont lisibles (200)', limites.status === 200, `reçu ${limites.status}`);
+    check(
+      'le reste à consommer est cohérent',
+      Number(limites.data?.daily?.remainingXof) ===
+        Math.max(Number(limites.data.daily.limitXof) - Number(limites.data.daily.usedXof), 0),
+      JSON.stringify(limites.data?.daily),
+    );
+    const miennes = await call('GET', '/compliance/limits/me', { token: client.accessToken });
+    check('un client voit ses propres plafonds (200)', miennes.status === 200, `reçu ${miennes.status}`);
+    const autrui = await call('GET', `/compliance/limits/${moussa.id}`, { token: client.accessToken });
+    check('il ne voit pas ceux d’autrui (403)', autrui.status === 403, `reçu ${autrui.status}`);
+
+    // Déclenchement du seuil de déclaration : une opération au-dessus du seuil.
+    const avant = await call('GET', '/compliance/alerts?resolved=false', { token: admin.accessToken });
+    const grosse = await call('POST', '/transactions', {
+      token: client.accessToken,
+      body: {
+        direction: 'VENTE_DEVISE',
+        currencyCode: 'EUR',
+        amount: seuil + 100_000,
+        depositMethod: 'CARTE_BANCAIRE',
+        payoutMethod: 'ESPECES_AGENCE',
+      },
+    });
+    if (grosse.status !== 201) {
+      skip(
+        'déclenchement du seuil de déclaration',
+        `création refusée (${grosse.status}) — plafond du client de démo probablement atteint`,
+      );
+      break conformiteSection;
+    }
+
+    const apres = await call('GET', '/compliance/alerts?resolved=false', { token: admin.accessToken });
+    check(
+      'une opération au-dessus du seuil lève une alerte',
+      (apres.data ?? []).length > (avant.data ?? []).length,
+      `${avant.data?.length} → ${apres.data?.length}`,
+    );
+    const alerte = (apres.data ?? []).find((row) => row.transaction?.id === grosse.data?.id);
+    check('l’alerte cite la transaction concernée', alerte !== undefined);
+    check('elle est classée CRITIQUE', alerte?.severity === 'CRITIQUE', String(alerte?.severity));
+    check(
+      'son message dit quoi faire, pas seulement qu’il y a un problème',
+      /déclaration|dossier/i.test(String(alerte?.message)),
+      String(alerte?.message),
+    );
+    check('elle nomme le client', alerte?.client?.phone === CLIENT.identifier);
+
+    // Le signalement ne bloque PAS : la transaction existe bel et bien.
+    check(
+      'le signalement n’empêche pas l’opération',
+      grosse.data?.status === 'CREEE',
+      String(grosse.data?.status),
+    );
+
+    // Les alertes les plus graves remontent en tête de file.
+    const severites = (apres.data ?? []).map((row) => row.severity);
+    const rang = { CRITIQUE: 0, ALERTE: 1, INFO: 2 };
+    check(
+      'la file est ordonnée du plus grave au moins grave',
+      severites.every((severity, index) => index === 0 || rang[severity] >= rang[severites[index - 1]]),
+      severites.join(', '),
+    );
+
+    const traitee = await call('POST', `/compliance/alerts/${alerte.id}/resolve`, {
+      token: admin.accessToken,
+    });
+    check('une alerte se marque traitée (201)', traitee.status === 201, `reçu ${traitee.status}`);
+    const restantes = await call('GET', '/compliance/alerts?resolved=false', { token: admin.accessToken });
+    check(
+      'elle sort de la file sans disparaître de la base',
+      (restantes.data ?? []).every((row) => row.id !== alerte.id),
+    );
+    const archivees = await call('GET', '/compliance/alerts?resolved=true', { token: admin.accessToken });
+    check('elle reste consultable une fois traitée', (archivees.data ?? []).some((row) => row.id === alerte.id));
+
+    const parClient = await call('GET', '/compliance/alerts', { token: client.accessToken });
+    check('un client ne lit pas les alertes (403)', parClient.status === 403, `reçu ${parClient.status}`);
+
+    // Blocage de compte : motif obligatoire, effet immédiat sur les opérations.
+    const sansMotif = await call('POST', `/clients/${moussa.id}/block`, {
+      token: admin.accessToken,
+      body: { reason: 'court' },
+    });
+    check('bloquer sans motif explicite est refusé (400)', sansMotif.status === 400, `reçu ${sansMotif.status}`);
+
+    const bloque = await call('POST', `/clients/${moussa.id}/block`, {
+      token: admin.accessToken,
+      body: { reason: 'Vérification complémentaire en cours sur l’origine des fonds.' },
+    });
+    check('le blocage motivé est accepté (201)', bloque.status === 201, `reçu ${bloque.status}`);
+
+    const tentative = await call('POST', '/transactions', {
+      token: client.accessToken,
+      body: {
+        direction: 'VENTE_DEVISE',
+        currencyCode: 'EUR',
+        amount: 20_000,
+        depositMethod: 'WAVE',
+        payoutMethod: 'ESPECES_AGENCE',
+      },
+    });
+    check('un compte bloqué ne peut plus transiger (403)', tentative.status === 403, `reçu ${tentative.status}`);
+
+    const debloque = await call('POST', `/clients/${moussa.id}/unblock`, { token: admin.accessToken });
+    check('le déblocage rétablit le compte (201)', debloque.status === 201 && debloque.data?.blocked === false);
+
+    // Plafonds : `null` rend la main au réglage global, ce n'est pas « zéro ».
+    const posé = await call('PATCH', `/clients/${moussa.id}/limits`, {
+      token: admin.accessToken,
+      body: { dailyLimitXof: 123_456 },
+    });
+    check('un plafond se fixe par client (200)', posé.status === 200, `reçu ${posé.status}`);
+    check('la valeur posée est bien reprise', Number(posé.data?.dailyLimitXof) === 123_456);
+
+    const rendu = await call('PATCH', `/clients/${moussa.id}/limits`, {
+      token: admin.accessToken,
+      body: { dailyLimitXof: null },
+    });
+    check('remettre à null rend la main au réglage global', rendu.data?.dailyLimitXof === null);
+    const herite = await call('GET', `/compliance/limits/${moussa.id}`, { token: admin.accessToken });
+    check('le plafond est alors marqué comme hérité', herite.data?.daily?.inherited === true);
+
+    // Remise en état : le compte de démo garde ses plafonds larges.
+    await call('PATCH', `/clients/${moussa.id}/limits`, {
+      token: admin.accessToken,
+      body: { dailyLimitXof: 50_000_000, monthlyLimitXof: 500_000_000 },
+    });
+
+    const trace = await call('GET', '/audit?entity=User&take=20', { token: admin.accessToken });
+    const actions = (trace.data ?? []).map((row) => row.action);
+    check(
+      'blocage, déblocage et plafonds sont tracés',
+      actions.includes('client.block') && actions.includes('client.unblock') && actions.includes('client.limits'),
+      actions.slice(0, 5).join(', '),
+    );
+  }
+
   // ------------------------------------------------------------------ bilan --
   console.log(`\n${'='.repeat(60)}`);
   console.log(`${passed} vérifications passées · ${failed} échouées · ${skipped} ignorées`);

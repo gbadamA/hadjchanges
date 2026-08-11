@@ -110,6 +110,19 @@ Les transitions invalides sont refusées **côté service** par une state machin
 
 ## 6. Décisions actées
 
+- ✅ **La vigilance SIGNALE, elle ne bloque pas.** Un automate qui refuse une opération légitime
+  coûte un client ; un automate qui la signale coûte une minute d'examen. Le blocage reste une
+  décision humaine, motivée et tracée.
+- ✅ **Les règles de vigilance sont des fonctions pures** dans `compliance.rules.ts` : en ajouter une
+  se fait en ajoutant une entrée à `RULES`, sans toucher au service qui les exécute. Quatre à ce
+  jour : seuil de déclaration, **fractionnement** (le contournement classique, que le seuil unitaire
+  ne voit jamais), compte récent, rythme inhabituel.
+- ✅ **Un compte bloqué est refusé à l'AUTHENTIFICATION**, donc partout — et avec un **403**, jamais
+  un 401 : l'identité est établie, c'est l'accès qui est refusé. Un 401 déclencherait un
+  rafraîchissement puis une déconnexion silencieuse, et l'utilisateur se retrouverait dehors sans
+  savoir pourquoi. La règle vit **à un seul endroit**, `JwtStrategy`.
+- ✅ **Un plafond à `null` rend la main au réglage global** — ce n'est pas « zéro ». L'écran le dit
+  explicitement, sinon un champ vidé passerait pour une interdiction totale.
 - ✅ **Le volume affiché est le chiffre RÉALISÉ**, c'est-à-dire les opérations dont le change a été
   exécuté. Les opérations en cours sont montrées à part : les additionner gonflerait les chiffres
   de direction avec des intentions.
@@ -266,7 +279,7 @@ les deux surfaces doivent se reconnaître au premier coup d'œil. Police Plus Ja
 | 5 | **Suivi** | historique filtrable, justificatif PDF, exports Excel/CSV | 🟢 |
 | 6 | **Caisses** | soldes par devise, mouvements, clôture journalière, affectation des agents | 🟢 |
 | 7 | **Reporting** | volumes, commissions, graphiques SVG maison, export comptable | 🟢 |
-| 8 | **Conformité** | seuils LCB-FT, alertes, plafonds client, journal d'audit consultable | ⚪ |
+| 8 | **Conformité** | vigilance LCB-FT, plafonds par client, blocage, journal d'audit | 🟢 |
 | 9 | **Notifications** | Expo Push + WhatsApp/SMS + alertes de taux favorable | ⚪ |
 
 Correspondance cahier §7 : phase 1 = briques 1-5, phase 2 = 6 + 9, phase 3 = 7 + 8.

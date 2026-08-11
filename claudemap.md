@@ -86,12 +86,12 @@ hadjchanges/
 │       ├── notifications/ 🟢 canal interne (Push/WhatsApp/SMS en brique 9)
 │       ├── transactions/  🟢 machine à états + reçus + `exchange-executor.ts` (l'argent bouge ici)
 │       ├── cash/          🟢 mouvements, soldes (cache recalculable), clôture journalière
-│       ├── compliance/    ⚪ seuils LCB-FT, alertes
+│       ├── compliance/    🟢 règles de vigilance (fonctions pures) + alertes + plafonds
 │       ├── documents/     🟢 justificatif PDF (PDFKit) + exports xlsx/CSV
 │       └── reporting/     🟢 volumes, commissions, séries et répartitions + export comptable
 │
 ├── scripts-verif/
-│   └── api-check.mjs      ✅ vérification exécutable de bout en bout (198 contrôles)
+│   └── api-check.mjs      ✅ vérification exécutable de bout en bout (225 contrôles)
 │
 ├── admin/                 Next.js 15 (App Router)
 │   └── src/
@@ -102,8 +102,8 @@ hadjchanges/
 │       ├── components/charts.tsx 📈 AreaChart · BarList · Donut — SVG maison, animés une fois
 │       └── app/
 │           ├── login         🟢 connexion équipe
-│           └── (dash)/       🟢 kyc, recus, transactions, caisses, rapports · ⚪ taux,
-│                             clients, agences, equipe, audit
+│           └── (dash)/       🟢 kyc, recus, transactions, caisses, rapports, clients,
+│                             conformite, audit · ⚪ taux, agences, equipe
 │
 └── mobile/                📱 React Expo 57
     ├── app.json           ⚙️ Config Expo (safe-area, back gesture off)
@@ -222,7 +222,7 @@ n'y a qu'un parcours, une pile suffit — une barre à un seul onglet ne sert pe
 | Reçus 🟢 | `/(dash)/recus` | **file de contrôle** : montant attendu en évidence, valider exécute le change |
 | Transactions 🟢 | `/(dash)/transactions` | liste filtrable, exports Excel/CSV, justificatif PDF |
 | Transactions | `/(dash)/transactions` | liste temps réel, filtres, détail, export |
-| Clients | `/(dash)/clients` | fiche, plafonds, blocage, historique |
+| Clients 🟢 | `/(dash)/clients` | recherche, jauges de plafond, blocage motivé |
 | Agences | `/(dash)/agences` | agences + affectation des opérateurs |
 | Caisses 🟢 | `/(dash)/caisses` | soldes par devise, mouvementer, **clôture par comptage** avec écart en direct |
 | Rapports 🟢 | `/(dash)/rapports` | bandeau dégradé, KPI soulevés, courbe tracée, anneau, export |
@@ -263,7 +263,8 @@ Un opérateur ne modifie **jamais** un taux ni un plafond, et ne voit que son ag
                       → vérifié : api-check.mjs 178/178 + clôture avec écart dans le navigateur
 [🟢] 7. Reporting     volumes, commissions, graphiques SVG maison, export comptable
                       → vérifié : api-check.mjs 198/198 + rendu et export dans le navigateur
-[⚪] 8. Conformité    seuils LCB-FT + plafonds + journal d'audit
+[🟢] 8. Conformité    vigilance LCB-FT + plafonds/blocage client + journal d'audit
+                      → vérifié : api-check.mjs 225/225 + alertes réelles dans le navigateur
 [⚪] 9. Notifications Expo Push + WhatsApp/SMS + alertes de taux favorable
 ```
 

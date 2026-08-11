@@ -331,6 +331,97 @@ export const reporting = {
     }),
 };
 
+export type Severity = 'INFO' | 'ALERTE' | 'CRITIQUE';
+
+export interface ComplianceAlert {
+  id: string;
+  rule: string;
+  severity: Severity;
+  message: string;
+  resolved: boolean;
+  createdAt: string;
+  client: { id: string; firstName: string; lastName: string; phone: string; blocked: boolean } | null;
+  transaction: { id: string; reference: string; amountXof: string; status: string } | null;
+}
+
+export interface ClientRow {
+  id: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string | null;
+  kycStatus: string;
+  blocked: boolean;
+  blockedReason: string | null;
+  dailyLimitXof: string | null;
+  monthlyLimitXof: string | null;
+  createdAt: string;
+  transactions: number;
+}
+
+export interface LimitsView {
+  daily: { limitXof: string; usedXof: string; remainingXof: string; inherited: boolean };
+  monthly: { limitXof: string; usedXof: string; remainingXof: string; inherited: boolean };
+}
+
+export interface AuditEntry {
+  id: string;
+  action: string;
+  entity: string;
+  entityId: string | null;
+  before: unknown;
+  after: unknown;
+  ip: string | null;
+  createdAt: string;
+  user: { firstName: string; lastName: string; role: string } | null;
+}
+
+/** Couleur par gravité — le rouge est réservé à ce qui exige une action. */
+export const SEVERITY_CLASS: Record<Severity, string> = {
+  CRITIQUE: 'bg-danger/15 text-danger',
+  ALERTE: 'bg-warning/15 text-warning',
+  INFO: 'bg-tertiary/15 text-tertiary',
+};
+
+export const RULE_LABEL: Record<string, string> = {
+  SEUIL_DECLARATION: 'Seuil de déclaration',
+  FRACTIONNEMENT: 'Fractionnement possible',
+  COMPTE_RECENT: 'Compte récent',
+  RYTHME_INHABITUEL: 'Rythme inhabituel',
+};
+
+export const compliance = {
+  alerts: (token: string, params: Record<string, string> = {}) =>
+    apiFetch<ComplianceAlert[]>(`/compliance/alerts?${new URLSearchParams(params).toString()}`, {
+      token,
+    }),
+  count: (token: string) =>
+    apiFetch<{ total: number; critique: number }>('/compliance/alerts/count', { token }),
+  resolve: (id: string, token: string) =>
+    apiFetch<{ id: string }>(`/compliance/alerts/${id}/resolve`, { method: 'POST', token }),
+  limits: (userId: string, token: string) =>
+    apiFetch<LimitsView>(`/compliance/limits/${userId}`, { token }),
+};
+
+export const clients = {
+  list: (token: string, params: Record<string, string> = {}) =>
+    apiFetch<ClientRow[]>(`/clients?${new URLSearchParams(params).toString()}`, { token }),
+  setLimits: (
+    id: string,
+    body: { dailyLimitXof?: number | null; monthlyLimitXof?: number | null },
+    token: string,
+  ) => apiFetch<ClientRow>(`/clients/${id}/limits`, { method: 'PATCH', body, token }),
+  block: (id: string, reason: string, token: string) =>
+    apiFetch<ClientRow>(`/clients/${id}/block`, { method: 'POST', body: { reason }, token }),
+  unblock: (id: string, token: string) =>
+    apiFetch<ClientRow>(`/clients/${id}/unblock`, { method: 'POST', token }),
+};
+
+export const audit = {
+  list: (token: string, params: Record<string, string> = {}) =>
+    apiFetch<AuditEntry[]>(`/audit?${new URLSearchParams(params).toString()}`, { token }),
+};
+
 export const kyc = {
   queue: (status: KycStatus, token: string) =>
     apiFetch<KycDocumentRow[]>(`/kyc/queue?status=${status}`, { token }),

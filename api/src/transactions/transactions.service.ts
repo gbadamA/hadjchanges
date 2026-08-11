@@ -15,6 +15,7 @@ import {
 } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../common/auth-user';
+import { ComplianceService } from '../compliance/compliance.service';
 import { ReceiptPdfService } from '../documents/receipt-pdf.service';
 import { StorageService } from '../storage/storage.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -36,6 +37,7 @@ export class TransactionsService {
     private readonly audit: AuditService,
     private readonly pdf: ReceiptPdfService,
     private readonly storage: StorageService,
+    private readonly compliance: ComplianceService,
   ) {}
 
   /**
@@ -46,7 +48,9 @@ export class TransactionsService {
   async create(input: CreateTransactionInput, client: AuthUser, ip?: string): Promise<TransactionView> {
     const user = await this.prisma.user.findUnique({ where: { id: client.id } });
     if (!user) throw new NotFoundException('Compte introuvable.');
-    if (user.blocked) throw new ForbiddenException('Votre compte est bloqué. Contactez le bureau.');
+    // Le blocage de compte est refusé en amont, par `JwtStrategy` : un compte
+    // bloqué n'atteint aucune route. Le redoubler ici donnerait deux endroits
+    // à corriger le jour où la règle change.
     if (user.kycStatus !== KycStatus.VALIDE) {
       throw new ForbiddenException(
         'Votre identité doit être vérifiée avant toute opération de change.',
@@ -112,6 +116,11 @@ export class TransactionsService {
       },
       ip,
     });
+
+    // Vigilance LCB-FT : au moment de la CRÉATION, pas de l'exécution. Un
+    // signalement qui n'arrive qu'après le change laisserait passer l'argent
+    // avant que quiconque ait pu regarder.
+    await this.compliance.screen(transaction);
 
     return toTransactionView(transaction);
   }

@@ -82,14 +82,17 @@ Comptes du seed : admin `0700000002` / `Admin@2026`, client vérifié `070900000
   comptage avec constat d'écart, affectation des opérateurs aux agences.
 - **Brique 7 — reporting** 🟢 volumes réalisés, commissions, séries journalières et répartitions,
   graphiques SVG maison, export comptable CSV.
+- **Brique 8 — conformité** 🟢 vigilance LCB-FT (seuil, fractionnement, compte récent, rythme),
+  plafonds et blocage par client, journal d’audit consultable.
 - **Mobile** (Expo SDK 57) : taux poussés en direct, simulateur, verrou, comptes, vérification
   d’identité, opération de change complète et suivi.
-- **Dashboard** : connexion équipe, identités, reçus, transactions, caisses, rapports. Les modules à venir
+- **Dashboard** : identités, reçus, transactions, caisses, rapports, clients, conformité, audit.
+  Les modules à venir
   apparaissent grisés dans le menu tant qu’ils n’existent pas.
 
-Vérifié : `api-check.mjs` **198/198**, `tsc --noEmit` 0 erreur sur les trois briques, et la boucle
+Vérifié : `api-check.mjs` **225/225**, `tsc --noEmit` 0 erreur sur les trois briques, et la boucle
 complète constatée dans le navigateur — simulation → verrou → opération → reçu → validation au
 dashboard → change exécuté → fonds disponibles → suivi horodaté côté client.
 
-Suite : brique 8 (conformité — seuils LCB-FT, plafonds par client, journal d’audit consultable).
+Suite : brique 9 (notifications — Expo Push, WhatsApp/SMS, alertes de taux favorable).
 Roadmap complète au §9 de [CLAUDE.md](CLAUDE.md).
