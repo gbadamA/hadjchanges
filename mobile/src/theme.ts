@@ -86,6 +86,18 @@ export const STATUS = {
   ANNULEE: '#8A97A6',
 } as const;
 
+/** Ce que chaque statut veut dire pour le client, en une phrase. */
+export const STATUS_HINT: Record<keyof typeof STATUS, string> = {
+  CREEE: 'Effectuez votre dépôt, puis importez le reçu.',
+  RECU_SOUMIS: 'Votre reçu est en cours de contrôle par un agent.',
+  RECU_VALIDE: 'Paiement confirmé, le change va être exécuté.',
+  RECU_REJETE: 'Votre reçu a été refusé. Déposez-en un nouveau.',
+  CHANGE_EXECUTE: 'Le change est fait. Vos fonds sont en préparation.',
+  PRETE_POUR_RETRAIT: 'Vos fonds sont disponibles.',
+  CLOTUREE: 'Opération terminée.',
+  ANNULEE: 'Opération annulée.',
+};
+
 // Dégradés (headers, CTA, médaillons, cartes de devise).
 export const G = {
   /** Dégradé signature 135° — bannières et boutons primaires. */

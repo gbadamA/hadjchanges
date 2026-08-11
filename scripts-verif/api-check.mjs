@@ -166,6 +166,34 @@ async function main() {
       const rows = Array.isArray(data) ? data : [];
       const overridden = rows.filter((row) => row.agencyId === airport.id);
       check('au moins un taux propre à l’agence s’applique', overridden.length > 0);
+      // Le taux d'agence doit résister à une republication du taux global :
+      // sinon une simple mise à jour effacerait la politique de l'agence.
+      const before = overridden[0];
+      if (before) {
+        // Cette section s'exécute avant la connexion de l'administrateur du
+        // scénario principal : on ouvre donc une session locale.
+        const publisher = await login(ADMIN);
+        const global = (await call('GET', '/rates')).data.find(
+          (row) => row.currency.code === before.currency.code,
+        );
+        await call('POST', '/rates', {
+          token: publisher.accessToken,
+          body: {
+            currencyCode: before.currency.code,
+            buyRate: Number(global.buyRate) + 1,
+            sellRate: Number(global.sellRate) + 1,
+            commissionPct: Number(global.commissionPct),
+          },
+        });
+        const after = (await call('GET', `/rates?agencyId=${airport.id}`)).data.find(
+          (row) => row.currency.code === before.currency.code,
+        );
+        check(
+          'republier le taux global n’efface pas le taux de l’agence',
+          after?.agencyId === airport.id && after?.sellRate === before.sellRate,
+          `agencyId ${after?.agencyId}, vente ${after?.sellRate} (attendu ${before.sellRate})`,
+        );
+      }
       for (const row of overridden) {
         const global = board.find((item) => item.currency.code === row.currency.code);
         check(
@@ -624,6 +652,190 @@ async function main() {
       actions.includes('kyc.approve') && actions.includes('kyc.reject'),
       actions.slice(0, 5).join(', '),
     );
+  }
+
+  // ---------------------------------------------------------- transactions --
+  section('Opération de change, de bout en bout');
+  {
+    // Un client SANS identité vérifiée ne doit pas pouvoir transiger.
+    const suffix = Date.now().toString().slice(-7);
+    const novice = await call('POST', '/auth/register', {
+      body: { firstName: 'Sekou', lastName: 'Bamba', phone: `06${suffix}2`, password: 'Tx@2026Test' },
+    });
+    const blocked = await call('POST', '/transactions', {
+      token: novice.data?.accessToken,
+      body: {
+        direction: 'VENTE_DEVISE',
+        currencyCode: 'EUR',
+        amount: 100_000,
+        depositMethod: 'ORANGE_MONEY',
+        payoutMethod: 'ESPECES_AGENCE',
+      },
+    });
+    check('sans KYC validé, la transaction est refusée (403)', blocked.status === 403, `reçu ${blocked.status}`);
+    check(
+      'le refus explique qu’il faut vérifier son identité',
+      /identité/i.test(String(blocked.data?.message)),
+      String(blocked.data?.message),
+    );
+
+    // Le client vérifié du seed, lui, peut aller au bout.
+    const verifie = await login(CLIENT);
+    const locked = await call('POST', '/quotes/lock', {
+      token: verifie.accessToken,
+      body: { direction: 'VENTE_DEVISE', currencyCode: 'EUR', amount: 200_000, side: 'SOURCE' },
+    });
+
+    const created = await call('POST', '/transactions', {
+      token: verifie.accessToken,
+      body: {
+        quoteId: locked.data?.id,
+        depositMethod: 'ORANGE_MONEY',
+        payoutMethod: 'ESPECES_AGENCE',
+      },
+    });
+    check('la transaction est créée à partir du devis (201)', created.status === 201, `reçu ${created.status}`);
+    check('elle porte une référence lisible', /^HC-\d{4}-\d{6}$/.test(created.data?.reference ?? ''), String(created.data?.reference));
+    check('elle démarre en attente de paiement', created.data?.status === 'CREEE');
+    check(
+      'le prix vient du devis, pas d’un recalcul',
+      created.data?.targetAmount === locked.data?.targetAmount &&
+        created.data?.appliedRate === locked.data?.appliedRate,
+      `${locked.data?.targetAmount} vs ${created.data?.targetAmount}`,
+    );
+    check('une agence lui est rattachée', created.data?.agency?.id !== undefined);
+    check('la timeline compte les 6 étapes du parcours', created.data?.timeline?.length === 6);
+
+    // Un verrou ne sert qu'une fois.
+    const reused = await call('POST', '/transactions', {
+      token: verifie.accessToken,
+      body: { quoteId: locked.data?.id, depositMethod: 'WAVE', payoutMethod: 'ESPECES_AGENCE' },
+    });
+    check('un devis déjà consommé est refusé (409)', reused.status === 409, `reçu ${reused.status}`);
+
+    const txId = created.data?.id;
+    // Aucune étape ne se saute : on ne valide pas un reçu qui n'existe pas.
+    const early = await call('POST', `/transactions/${txId}/ready`, { token: admin.accessToken });
+    check('impossible de sauter au retrait sans exécuter le change (409)', early.status === 409, `reçu ${early.status}`);
+
+    const noProof = await upload(`/transactions/${txId}/receipt`, { token: verifie.accessToken });
+    check('déposer un reçu vide est refusé (400)', noProof.status === 400, `reçu ${noProof.status}`);
+
+    const submitted = await upload(`/transactions/${txId}/receipt`, {
+      token: verifie.accessToken,
+      files: { receipt: { content: PNG_1PX, type: 'image/png', name: 'recu.png' } },
+    });
+    check('le dépôt du reçu est accepté (201)', submitted.status === 201, `reçu ${submitted.status}`);
+    check('la transaction passe en contrôle de reçu', submitted.data?.status === 'RECU_SOUMIS');
+
+    const queue = await call('GET', '/transactions/receipts/queue', { token: admin.accessToken });
+    const waiting = (queue.data ?? []).find((row) => row.transaction.id === txId);
+    check('le reçu apparaît dans la file de contrôle', waiting !== undefined);
+    check('la file porte le montant attendu et le client', waiting?.transaction?.client?.id !== undefined);
+
+    const clientQueue = await call('GET', '/transactions/receipts/queue', { token: verifie.accessToken });
+    check('un client ne voit pas la file des reçus (403)', clientQueue.status === 403, `reçu ${clientQueue.status}`);
+
+    // Rejet, puis redépôt : c'est une boucle, pas une impasse.
+    const motif = 'Le montant du reçu ne correspond pas au montant attendu.';
+    const rejected = await call('POST', `/transactions/receipts/${waiting?.id}/reject`, {
+      token: admin.accessToken,
+      body: { reason: motif },
+    });
+    check('le rejet motivé du reçu est accepté (201)', rejected.status === 201, `reçu ${rejected.status}`);
+    check('la transaction revient au client', rejected.data?.status === 'RECU_REJETE');
+
+    const redeposit = await upload(`/transactions/${txId}/receipt`, {
+      token: verifie.accessToken,
+      files: { receipt: { content: PNG_1PX, type: 'image/png', name: 'recu-2.png' } },
+    });
+    check('après rejet, le client peut redéposer (201)', redeposit.status === 201, `reçu ${redeposit.status}`);
+    check('la transaction conserve ses deux reçus', (redeposit.data?.receipts ?? []).length === 2);
+
+    // Soldes de caisse AVANT exécution, pour vérifier le mouvement réel.
+    const agencyId = created.data?.agency?.id;
+    const before = await call('GET', `/agencies/${agencyId}/cash`, { token: admin.accessToken });
+    const xofBefore = Number((before.data ?? []).find((row) => row.currency.code === 'XOF')?.amount);
+    const eurBefore = Number((before.data ?? []).find((row) => row.currency.code === 'EUR')?.amount);
+
+    const queue2 = await call('GET', '/transactions/receipts/queue', { token: admin.accessToken });
+    const pending = (queue2.data ?? []).find((row) => row.transaction.id === txId);
+    const approved = await call('POST', `/transactions/receipts/${pending?.id}/approve`, {
+      token: admin.accessToken,
+      body: { declaredAmount: Number(created.data?.sourceAmount) },
+    });
+    check('la validation du reçu est acceptée (201)', approved.status === 201, `reçu ${approved.status}`);
+    check(
+      'valider le reçu exécute le change dans la foulée',
+      approved.data?.status === 'CHANGE_EXECUTE',
+      String(approved.data?.status),
+    );
+
+    const after = await call('GET', `/agencies/${agencyId}/cash`, { token: admin.accessToken });
+    const xofAfter = Number((after.data ?? []).find((row) => row.currency.code === 'XOF')?.amount);
+    const eurAfter = Number((after.data ?? []).find((row) => row.currency.code === 'EUR')?.amount);
+    check(
+      'les FCFA reçus entrent en caisse',
+      xofAfter - xofBefore === Number(created.data?.sourceAmount),
+      `${xofBefore} → ${xofAfter}`,
+    );
+    check(
+      'les devises remises sortent de la caisse',
+      Math.abs(eurBefore - eurAfter - Number(created.data?.targetAmount)) < 0.01,
+      `${eurBefore} → ${eurAfter}`,
+    );
+
+    const twice = await call('POST', `/transactions/receipts/${pending?.id}/approve`, {
+      token: admin.accessToken,
+      body: {},
+    });
+    check('un reçu déjà traité ne se revalide pas (409)', twice.status === 409, `reçu ${twice.status}`);
+
+    const ready = await call('POST', `/transactions/${txId}/ready`, { token: admin.accessToken });
+    check('les fonds passent à disposition (201)', ready.status === 201 && ready.data?.status === 'PRETE_POUR_RETRAIT', `reçu ${ready.status}`);
+
+    const closed = await call('POST', `/transactions/${txId}/close`, { token: admin.accessToken });
+    check('la transaction se clôture (201)', closed.status === 201 && closed.data?.status === 'CLOTUREE', `reçu ${closed.status}`);
+    check('toutes les étapes sont horodatées', (closed.data?.timeline ?? []).every((step) => step.at !== null));
+
+    const reopen = await call('POST', `/transactions/${txId}/cancel`, {
+      token: admin.accessToken,
+      body: { reason: 'test' },
+    });
+    check('une transaction close ne se rouvre jamais (409)', reopen.status === 409, `reçu ${reopen.status}`);
+
+    // Cloisonnement : la transaction d'autrui reste invisible.
+    const stranger = await login({ identifier: '0709000002', password: CLIENT.password });
+    const peek = await call('GET', `/transactions/${txId}`, { token: stranger.accessToken });
+    check('la transaction d’autrui est introuvable (404)', peek.status === 404, `reçu ${peek.status}`);
+
+    const mine = await call('GET', '/transactions/mine', { token: verifie.accessToken });
+    check('le client retrouve son opération dans son historique', (mine.data ?? []).some((row) => row.id === txId));
+
+    const trace = await call('GET', '/audit?entity=Transaction&take=30', { token: admin.accessToken });
+    const actions = (trace.data ?? []).map((row) => row.action);
+    check(
+      'la création et l’exécution sont tracées',
+      actions.includes('transaction.create') && actions.includes('transaction.execute'),
+      actions.slice(0, 4).join(', '),
+    );
+  }
+
+  // Plafond : la protection doit tenir même si l'app ne l'affiche pas.
+  {
+    const rich = await login(CLIENT);
+    const huge = await call('POST', '/transactions', {
+      token: rich.accessToken,
+      body: {
+        direction: 'VENTE_DEVISE',
+        currencyCode: 'EUR',
+        amount: 900_000_000,
+        depositMethod: 'ORANGE_MONEY',
+        payoutMethod: 'ESPECES_AGENCE',
+      },
+    });
+    check('un montant au-delà du plafond est refusé (403)', huge.status === 403, `reçu ${huge.status}`);
+    check('le refus nomme le plafond dépassé', /plafond/i.test(String(huge.data?.message)), String(huge.data?.message));
   }
 
   // ------------------------------------------------------------------ bilan --

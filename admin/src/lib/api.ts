@@ -106,6 +106,96 @@ export const auth = {
     apiFetch<void>('/auth/logout', { method: 'POST', body: { refreshToken } }),
 };
 
+export type TransactionStatus =
+  | 'CREEE'
+  | 'RECU_SOUMIS'
+  | 'RECU_VALIDE'
+  | 'RECU_REJETE'
+  | 'CHANGE_EXECUTE'
+  | 'PRETE_POUR_RETRAIT'
+  | 'CLOTUREE'
+  | 'ANNULEE';
+
+export interface TransactionRow {
+  id: string;
+  reference: string;
+  status: TransactionStatus;
+  statusLabel: string;
+  direction: 'ACHAT_DEVISE' | 'VENTE_DEVISE';
+  sourceCurrency: string;
+  targetCurrency: string;
+  sourceAmount: string;
+  targetAmount: string;
+  appliedRate: string;
+  commissionPct: string;
+  commissionAmount: string;
+  amountXof: string;
+  depositMethod: string;
+  payoutMethod: string | null;
+  payoutDetails: string | null;
+  createdAt: string;
+  agency: { id: string; name: string; city: string } | null;
+  client?: { id: string; firstName: string; lastName: string; phone: string };
+  receipts: Array<{
+    id: string;
+    status: string;
+    rejectReason: string | null;
+    createdAt: string;
+    validatedAt: string | null;
+  }>;
+  timeline: Array<{
+    status: TransactionStatus;
+    label: string;
+    at: string | null;
+    done: boolean;
+    current: boolean;
+  }>;
+}
+
+export interface ReceiptRow {
+  id: string;
+  status: string;
+  createdAt: string;
+  declaredAmount: string | null;
+  declaredRef: string | null;
+  transaction: TransactionRow;
+}
+
+export const transactions = {
+  list: (token: string, params: Record<string, string> = {}) =>
+    apiFetch<TransactionRow[]>(`/transactions?${new URLSearchParams(params).toString()}`, { token }),
+  receiptQueue: (token: string, status = 'EN_ATTENTE') =>
+    apiFetch<ReceiptRow[]>(`/transactions/receipts/queue?status=${status}`, { token }),
+  approveReceipt: (id: string, declaredAmount: number | undefined, token: string) =>
+    apiFetch<TransactionRow>(`/transactions/receipts/${id}/approve`, {
+      method: 'POST',
+      body: declaredAmount === undefined ? {} : { declaredAmount },
+      token,
+    }),
+  rejectReceipt: (id: string, reason: string, token: string) =>
+    apiFetch<TransactionRow>(`/transactions/receipts/${id}/reject`, {
+      method: 'POST',
+      body: { reason },
+      token,
+    }),
+  markReady: (id: string, token: string) =>
+    apiFetch<TransactionRow>(`/transactions/${id}/ready`, { method: 'POST', token }),
+  close: (id: string, token: string) =>
+    apiFetch<TransactionRow>(`/transactions/${id}/close`, { method: 'POST', token }),
+};
+
+/** Couleur de statut — miroir de `statusColors` dans `tokens.ts`. */
+export const STATUS_CLASS: Record<TransactionStatus, string> = {
+  CREEE: 'bg-status-creee/15 text-status-creee',
+  RECU_SOUMIS: 'bg-status-recu-soumis/15 text-status-recu-soumis',
+  RECU_VALIDE: 'bg-status-recu-valide/15 text-status-recu-valide',
+  RECU_REJETE: 'bg-status-recu-rejete/15 text-status-recu-rejete',
+  CHANGE_EXECUTE: 'bg-status-execute/15 text-status-execute',
+  PRETE_POUR_RETRAIT: 'bg-status-prete/20 text-secondary-hover',
+  CLOTUREE: 'bg-status-cloturee/15 text-status-cloturee',
+  ANNULEE: 'bg-status-annulee/15 text-status-annulee',
+};
+
 export const kyc = {
   queue: (status: KycStatus, token: string) =>
     apiFetch<KycDocumentRow[]>(`/kyc/queue?status=${status}`, { token }),
@@ -129,9 +219,18 @@ export async function fetchProtectedImage(
   kind: 'document' | 'selfie',
   token: string,
 ): Promise<string> {
-  const response = await fetch(`${API_URL}/api/kyc/documents/${documentId}/file?kind=${kind}`, {
+  return protectedBlob(`/api/kyc/documents/${documentId}/file?kind=${kind}`, token);
+}
+
+/** Justificatif de paiement — même règle : l'URL exige un jeton. */
+export async function fetchReceiptImage(receiptId: string, token: string): Promise<string> {
+  return protectedBlob(`/api/transactions/receipts/${receiptId}/file`, token);
+}
+
+async function protectedBlob(path: string, token: string): Promise<string> {
+  const response = await fetch(`${API_URL}${path}`, {
     headers: { authorization: `Bearer ${token}` },
   });
-  if (!response.ok) throw new ApiError('Pièce illisible.', response.status);
+  if (!response.ok) throw new ApiError('Document illisible.', response.status);
   return URL.createObjectURL(await response.blob());
 }

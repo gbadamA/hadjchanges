@@ -110,6 +110,14 @@ Les transitions invalides sont refusées **côté service** par une state machin
 
 ## 6. Décisions actées
 
+- ✅ **Valider un reçu exécute le change dans la foulée.** Les deux gestes ne sont pas séparés :
+  valider, c'est décider que l'argent est arrivé. Laisser une file « reçu validé, change à faire »
+  créerait une attente que personne ne relève.
+- ✅ **Une caisse ne passe jamais en négatif.** `CashService.move` refuse, et toute l'exécution est
+  annulée : la transaction reste au statut « reçu validé », prête à repartir une fois la caisse
+  alimentée. On ne remet pas au client des billets qu'on n'a pas.
+- ✅ **Les plafonds sont vérifiés à la création**, côté serveur, sur la somme des transactions non
+  annulées du jour et du mois.
 - ✅ **Un seul dossier d'identité vivant à la fois.** Re-déposer pendant l'examen créerait deux
   files pour la même personne ; re-déposer une fois validé n'a pas de sens. La re-soumission
   **après rejet** est en revanche explicitement ouverte (cahier §3.2), et elle efface le motif
@@ -265,6 +273,25 @@ direct. **Ne jamais « simplifier » en exposant `uploads/`.**
 L'écran KYC restait figé sur « Ouverture de votre dossier… » pour un visiteur sans session : le
 garde `if (!accessToken) return;` sautait la fin du chargement. Vérifier ce cas sur chaque écran
 qui lit des données protégées.
+
+⚠️ **Un mouvement de caisse et le changement de statut qui le justifie vont dans LA MÊME
+transaction base.** L'un sans l'autre laisse un trou impossible à rattraper à la clôture
+journalière. La vérité des soldes est la suite des `CashMovement` ; `CashBalance` n'est qu'un cache,
+reconstructible par `CashService.recompute()`.
+
+⚠️ **Ne jamais résoudre le taux courant par une requête fenêtrée** (`take: n` sur les deux
+périmètres mélangés). Passé la fenêtre, le taux propre à une agence disparaissait des candidats et
+le taux global reprenait la main **sans que personne ne l'ait décidé** — bug réel, trouvé par
+`api-check.mjs` après une vingtaine de republications globales. Chaque périmètre a sa propre
+requête dans `RatesRepository.current`.
+
+⚠️ **Routes dynamiques d'Expo Router : forme objet obligatoire.**
+`router.push({ pathname: '/transaction/[id]', params: { id } })` — une chaîne interpolée ne compile
+pas avec les routes typées. Et ces types ne sont régénérés que par le serveur Metro : un `tsc` sur
+un écran fraîchement ajouté échoue tant que Metro n'a pas tourné.
+
+⚠️ **Le compteur du throttler est EN MÉMOIRE** : quelques passages du script de vérification
+épuisent le quota de `/auth/login` (429 en cascade). Redémarrer l'API le remet à zéro.
 
 ⚠️ **Le calcul du change n'existe qu'à UN endroit** : `api/src/quotes/quote-calculator.ts`. Le
 simulateur, le verrou et (bientôt) l'exécution de la transaction l'appellent tous. Ne jamais

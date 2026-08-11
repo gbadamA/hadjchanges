@@ -1,8 +1,9 @@
-import { Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Controller, ForbiddenException, Get, Param, Patch, Post } from '@nestjs/common';
 import { Role, type Agency } from '@prisma/client';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { AuditService } from '../audit/audit.service';
+import { CashService } from '../cash/cash.service';
 import type { AuthUser } from '../common/auth-user';
 import { CurrentUser, Public, Roles } from '../common/decorators';
 import { ApiZodBody, ZBody } from '../common/zod';
@@ -26,7 +27,32 @@ export class AgenciesController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly cashService: CashService,
   ) {}
+
+  /**
+   * Soldes de caisse d'une agence, devise par devise (cahier §3.1).
+   * Réservé aux agents : c'est l'encaisse du bureau, pas une donnée publique.
+   */
+  @Roles(Role.OPERATEUR, Role.ADMIN, Role.SUPER_ADMIN)
+  @Get(':id/cash')
+  @ApiOperation({ summary: 'Soldes de caisse par devise.' })
+  async cash(@Param('id') id: string, @CurrentUser() current: AuthUser) {
+    // Un opérateur ne consulte que la caisse de son agence.
+    if (current.role === Role.OPERATEUR && current.agencyId !== id) {
+      throw new ForbiddenException('Vous ne pouvez consulter que la caisse de votre agence.');
+    }
+    const balances = await this.cashService.balances(id);
+    return balances.map((balance) => ({
+      currency: {
+        code: balance.currency.code,
+        symbol: balance.currency.symbol,
+        decimals: balance.currency.decimals,
+      },
+      amount: balance.amount.toString(),
+      updatedAt: balance.updatedAt.toISOString(),
+    }));
+  }
 
   /** Public : un client doit pouvoir choisir où retirer ses espèces. */
   @Public()

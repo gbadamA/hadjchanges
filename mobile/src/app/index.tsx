@@ -44,15 +44,24 @@ export default function Accueil(): ReactNode {
 
       <View style={styles.body}>
         {profile ? (
-          <Link href="/compte" asChild>
-            <Pressable style={styles.account}>
-              <Ionicons name="person-circle-outline" size={22} color={C.navy} />
-              <Text style={[T.label, styles.accountText]} numberOfLines={1}>
-                {profile.firstName} · {KYC_LABEL[profile.kycStatus]}
-              </Text>
-              <Ionicons name="chevron-forward" size={18} color={C.textMute} />
-            </Pressable>
-          </Link>
+          <View style={styles.authRow}>
+            <Link href="/compte" asChild>
+              <Pressable style={[styles.account, styles.authButton]}>
+                <Ionicons name="person-circle-outline" size={22} color={C.navy} />
+                <Text style={[T.label, styles.accountText]} numberOfLines={1}>
+                  {profile.firstName} · {KYC_LABEL[profile.kycStatus]}
+                </Text>
+              </Pressable>
+            </Link>
+            <Link href="/operations" asChild>
+              <Pressable style={[styles.account, styles.authButton]}>
+                <Ionicons name="swap-horizontal-outline" size={22} color={C.navy} />
+                <Text style={[T.label, styles.accountText]} numberOfLines={1}>
+                  Mes opérations
+                </Text>
+              </Pressable>
+            </Link>
+          </View>
         ) : (
           <View style={styles.authRow}>
             <View style={styles.authButton}>

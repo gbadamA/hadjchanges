@@ -74,14 +74,16 @@ Comptes du seed : admin `0700000002` / `Admin@2026`, client vérifié `070900000
   en direct par WebSocket, comptes clients sur mobile.
 - **Brique 3 — KYC** 🟢 dépôt de pièce et selfie sur mobile, file de validation au dashboard,
   décision motivée notifiée au client, journal d'audit consultable.
-- **Mobile** (Expo SDK 57) : taux poussés en direct, simulateur, verrou, inscription, connexion,
-  compte, vérification d’identité.
+- **Brique 4 — transaction** 🟢 création depuis un devis verrouillé, import du reçu, file de
+  contrôle au dashboard, exécution du change et mouvements de caisse, suivi horodaté côté client.
+- **Mobile** (Expo SDK 57) : taux poussés en direct, simulateur, verrou, comptes, vérification
+  d’identité, opération de change complète et suivi.
 - **Dashboard** : connexion équipe et file de validation des identités. Les autres modules
   apparaissent grisés dans le menu tant qu’ils n’existent pas.
 
-Vérifié : `api-check.mjs` **96/96**, `tsc --noEmit` 0 erreur sur les trois briques, et la boucle
-complète constatée dans le navigateur — dépôt mobile → validation au dashboard → « Identité
-vérifiée » côté client.
+Vérifié : `api-check.mjs` **131/131**, `tsc --noEmit` 0 erreur sur les trois briques, et la boucle
+complète constatée dans le navigateur — simulation → verrou → opération → reçu → validation au
+dashboard → change exécuté → fonds disponibles → suivi horodaté côté client.
 
-Suite : brique 4 (la transaction — import du reçu, validation, exécution du change). Roadmap
-complète au §9 de [CLAUDE.md](CLAUDE.md).
+Suite : brique 5 (suivi — justificatif PDF et exports). Roadmap complète au §9 de
+[CLAUDE.md](CLAUDE.md).

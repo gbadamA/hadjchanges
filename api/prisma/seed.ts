@@ -9,7 +9,7 @@
  * EUR/XOF (655,957) est fixe par construction du franc CFA — les autres
  * doivent être remplacés par les taux réels de l'exploitant avant mise en ligne.
  */
-import { KycStatus, PrismaClient, Role } from '@prisma/client';
+import { CashMovementType, KycStatus, Prisma, PrismaClient, Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -156,6 +156,53 @@ async function main(): Promise<void> {
     });
   }
 
+  // --- Alimentation des caisses -------------------------------------------
+  // Sans encaisse, aucun change ne peut s'exécuter : le bureau ne peut pas
+  // remettre des billets qu'il n'a pas. On dote donc chaque agence d'un fonds
+  // de roulement plausible, via de VRAIS mouvements de caisse — le solde reste
+  // ainsi la somme de son historique, comme en production.
+  const superAdmin = await prisma.user.findUniqueOrThrow({ where: { phone: '0700000001' } });
+  const fundings: Array<{ code: string; amounts: Record<string, string> }> = [
+    { code: 'PLT', amounts: { XOF: '50000000', EUR: '40000', USD: '35000', GBP: '8000', SAR: '120000', AED: '90000', CAD: '10000' } },
+    { code: 'AER', amounts: { XOF: '30000000', EUR: '25000', USD: '25000', GBP: '5000', SAR: '80000', AED: '60000', CAD: '6000' } },
+    { code: 'ADJ', amounts: { XOF: '15000000', EUR: '10000', USD: '8000', SAR: '40000' } },
+    { code: 'YKR', amounts: { XOF: '10000000', EUR: '6000', USD: '5000', SAR: '25000' } },
+  ];
+
+  for (const funding of fundings) {
+    const agency = await prisma.agency.findUnique({ where: { code: funding.code } });
+    if (!agency) continue;
+
+    for (const [code, amount] of Object.entries(funding.amounts)) {
+      const currency = await prisma.currency.findUnique({ where: { code } });
+      if (!currency) continue;
+
+      // Idempotence : on ne réalimente pas une caisse déjà dotée.
+      const existing = await prisma.cashMovement.findFirst({
+        where: { agencyId: agency.id, currencyId: currency.id, type: CashMovementType.ALIMENTATION },
+      });
+      if (existing) continue;
+
+      const value = new Prisma.Decimal(amount);
+      await prisma.cashMovement.create({
+        data: {
+          agencyId: agency.id,
+          currencyId: currency.id,
+          type: CashMovementType.ALIMENTATION,
+          amount: value,
+          balanceAfter: value,
+          note: 'Fonds de roulement initial',
+          createdById: superAdmin.id,
+        },
+      });
+      await prisma.cashBalance.upsert({
+        where: { agencyId_currencyId: { agencyId: agency.id, currencyId: currency.id } },
+        create: { agencyId: agency.id, currencyId: currency.id, amount: value },
+        update: { amount: value },
+      });
+    }
+  }
+
   // --- Réglages système ---------------------------------------------------
   const settings = [
     { key: 'rateLockMinutes', value: '30', label: 'Durée de validité du taux verrouillé (minutes)' },
@@ -179,6 +226,7 @@ async function main(): Promise<void> {
     comptes: await prisma.user.count(),
     versionsDeTaux: await prisma.exchangeRate.count(),
     reglages: await prisma.setting.count(),
+    caissesAlimentees: await prisma.cashBalance.count(),
   };
   console.log('Seed terminé :', counts);
   console.log(`Comptes internes : mot de passe « ${ADMIN_PASSWORD} » · clients : « ${CLIENT_PASSWORD} »`);

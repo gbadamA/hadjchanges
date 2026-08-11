@@ -192,14 +192,24 @@ export default function Simulateur(): ReactNode {
           </View>
 
           {locked ? (
-            <View style={styles.lockedBox}>
-              <Ionicons name="lock-closed" size={16} color={C.goldDeep} />
-              <Text style={[T.label, styles.lockedText]}>
-                {remaining
-                  ? `Taux garanti ${remaining} · ${locked.reference}`
-                  : 'Verrou expiré — relancez la simulation'}
-              </Text>
-            </View>
+            <>
+              <View style={styles.lockedBox}>
+                <Ionicons name="lock-closed" size={16} color={C.goldDeep} />
+                <Text style={[T.label, styles.lockedText]}>
+                  {remaining
+                    ? `Taux garanti ${remaining} · ${locked.reference}`
+                    : 'Verrou expiré — relancez la simulation'}
+                </Text>
+              </View>
+              {/* Le verrou ne vaut que s'il débouche : le pas suivant est ici,
+                  tant que l'échéance n'est pas passée. */}
+              {remaining ? (
+                <Button
+                  label="Poursuivre l’opération"
+                  onPress={() => router.push(`/operation/nouvelle?quoteId=${locked.id}`)}
+                />
+              ) : null}
+            </>
           ) : (
             <Button
               label={locking ? 'Verrouillage…' : 'Verrouiller ce taux 30 min'}

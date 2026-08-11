@@ -51,6 +51,89 @@ export interface Quote {
   lockedUntil: string | null;
 }
 
+export type TransactionStatus =
+  | 'CREEE'
+  | 'RECU_SOUMIS'
+  | 'RECU_VALIDE'
+  | 'RECU_REJETE'
+  | 'CHANGE_EXECUTE'
+  | 'PRETE_POUR_RETRAIT'
+  | 'CLOTUREE'
+  | 'ANNULEE';
+
+export type DepositMethod =
+  | 'ORANGE_MONEY'
+  | 'MTN_MOMO'
+  | 'MOOV_MONEY'
+  | 'WAVE'
+  | 'CARTE_BANCAIRE'
+  | 'ESPECES_AGENCE';
+
+export type PayoutMethod = 'ESPECES_AGENCE' | 'MOBILE_MONEY' | 'VIREMENT_BANCAIRE';
+
+export interface Agency {
+  id: string;
+  code: string;
+  name: string;
+  city: string;
+  address: string | null;
+  phone: string | null;
+}
+
+export interface TimelineStep {
+  status: TransactionStatus;
+  label: string;
+  at: string | null;
+  done: boolean;
+  current: boolean;
+}
+
+export interface Transaction {
+  id: string;
+  reference: string;
+  status: TransactionStatus;
+  statusLabel: string;
+  direction: TransactionDirection;
+  sourceCurrency: string;
+  targetCurrency: string;
+  sourceAmount: string;
+  targetAmount: string;
+  appliedRate: string;
+  commissionPct: string;
+  commissionAmount: string;
+  amountXof: string;
+  depositMethod: DepositMethod;
+  payoutMethod: PayoutMethod | null;
+  payoutDetails: string | null;
+  cancelReason: string | null;
+  createdAt: string;
+  agency: { id: string; name: string; city: string } | null;
+  receipts: Array<{
+    id: string;
+    status: string;
+    rejectReason: string | null;
+    createdAt: string;
+    validatedAt: string | null;
+  }>;
+  timeline: TimelineStep[];
+}
+
+/** Libellés des moyens de dépôt — jamais l'enum brute à l'écran. */
+export const DEPOSIT_LABEL: Record<DepositMethod, string> = {
+  ORANGE_MONEY: 'Orange Money',
+  MTN_MOMO: 'MTN MoMo',
+  MOOV_MONEY: 'Moov Money',
+  WAVE: 'Wave',
+  CARTE_BANCAIRE: 'Carte bancaire',
+  ESPECES_AGENCE: 'Espèces en agence',
+};
+
+export const PAYOUT_LABEL: Record<PayoutMethod, string> = {
+  ESPECES_AGENCE: 'Espèces en agence',
+  MOBILE_MONEY: 'Mobile money',
+  VIREMENT_BANCAIRE: 'Virement bancaire',
+};
+
 export type KycStatus = 'NON_SOUMIS' | 'EN_ATTENTE' | 'VALIDE' | 'REJETE';
 
 export interface Profile {

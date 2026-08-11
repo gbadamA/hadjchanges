@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AgenciesModule } from './agencies/agencies.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
+import { CashModule } from './cash/cash.module';
 import { JwtAuthGuard, RolesGuard } from './common/guards';
 import { loadEnv } from './config/env';
 import { CurrenciesModule } from './currencies/currencies.module';
@@ -16,6 +17,7 @@ import { QuotesModule } from './quotes/quotes.module';
 import { RatesModule } from './rates/rates.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { SettingsModule } from './settings/settings.module';
+import { TransactionsModule } from './transactions/transactions.module';
 import { StorageModule } from './storage/storage.module';
 import { UsersModule } from './users/users.module';
 
@@ -28,6 +30,7 @@ import { UsersModule } from './users/users.module';
     SettingsModule,
     StorageModule,
     NotificationsModule,
+    CashModule,
     AuthModule,
     UsersModule,
     KycModule,
@@ -35,6 +38,7 @@ import { UsersModule } from './users/users.module';
     RealtimeModule,
     RatesModule,
     QuotesModule,
+    TransactionsModule,
     AgenciesModule,
   ],
   controllers: [HealthController],

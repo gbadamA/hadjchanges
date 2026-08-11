@@ -1,4 +1,30 @@
-import type { Profile, Quote, RateRow, TransactionDirection } from './models';
+import type {
+  Agency,
+  DepositMethod,
+  PayoutMethod,
+  Profile,
+  Quote,
+  RateRow,
+  Transaction,
+  TransactionDirection,
+} from './models';
+
+export interface PublicSettings {
+  depositNumbers: Partial<Record<DepositMethod, string>>;
+  rateLockMinutes: number;
+}
+
+export interface CreateTransactionInput {
+  quoteId?: string;
+  direction?: TransactionDirection;
+  currencyCode?: string;
+  amount?: number;
+  side?: 'SOURCE' | 'TARGET';
+  agencyId?: string | null;
+  depositMethod: DepositMethod;
+  payoutMethod: PayoutMethod;
+  payoutDetails?: string;
+}
 
 /**
  * SEUL point d'accès réseau de l'application. Aucun `fetch` dans un écran :
@@ -155,6 +181,27 @@ export const api = {
   me: (token: string): Promise<Profile> => request<Profile>('/users/me', { token }),
 
   kyc: (token: string): Promise<KycState> => request<KycState>('/kyc/me', { token }),
+
+  /** Numéros de dépôt et durée du verrou — publics, nécessaires pour payer. */
+  publicSettings: (): Promise<PublicSettings> => request<PublicSettings>('/settings/public'),
+
+  agencies: (): Promise<Agency[]> => request<Agency[]>('/agencies'),
+
+  createTransaction: (input: CreateTransactionInput, token: string): Promise<Transaction> =>
+    request<Transaction>('/transactions', { method: 'POST', body: input, token }),
+
+  myTransactions: (token: string): Promise<Transaction[]> =>
+    request<Transaction[]>('/transactions/mine', { token }),
+
+  transaction: (id: string, token: string): Promise<Transaction> =>
+    request<Transaction>(`/transactions/${id}`, { token }),
+
+  cancelTransaction: (id: string, token: string): Promise<Transaction> =>
+    request<Transaction>(`/transactions/${id}/cancel`, { method: 'POST', body: {}, token }),
+
+  /** Dépôt de la preuve de paiement (photo ou PDF du reçu). */
+  submitReceipt: (id: string, receipt: PickedFile, token: string): Promise<Transaction> =>
+    upload<Transaction>(`/transactions/${id}/receipt`, { token, fields: {}, files: { receipt } }),
 
   /** Dépôt de la pièce d'identité — le selfie est facultatif mais recommandé. */
   submitKyc: (

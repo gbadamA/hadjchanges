@@ -20,8 +20,8 @@ const MANAGERS: Role[] = ['ADMIN', 'SUPER_ADMIN'];
 
 export const NAVIGATION: NavItem[] = [
   { href: '/kyc', label: 'Identités', roles: ALL_STAFF, ready: true },
-  { href: '/recus', label: 'Reçus de paiement', roles: ALL_STAFF, ready: false },
-  { href: '/transactions', label: 'Transactions', roles: ALL_STAFF, ready: false },
+  { href: '/recus', label: 'Reçus de paiement', roles: ALL_STAFF, ready: true },
+  { href: '/transactions', label: 'Transactions', roles: ALL_STAFF, ready: true },
   { href: '/taux', label: 'Taux', roles: MANAGERS, ready: false },
   { href: '/clients', label: 'Clients', roles: MANAGERS, ready: false },
   { href: '/caisses', label: 'Caisses', roles: ALL_STAFF, ready: false },

@@ -47,9 +47,9 @@ caisse tenue, tout tracé.
 
 | Brique | Dossier | Port | Statut | Rôle |
 |--------|---------|------|--------|------|
-| API | `api/` | 3061 | 🟢 auth, RBAC, devises, taux, simulation + verrou, WebSocket, **KYC**, audit | Cœur métier : taux, KYC, transactions, caisses, audit |
-| Dashboard | `admin/` | 3060 | 🟠 connexion + **file de validation des identités** | Admin / opérateur : validation, pilotage, reporting |
-| Mobile | `mobile/` | Expo Go | 🟢 taux en direct, simulateur, verrou, comptes, **KYC** | Client final : taux, simulateur, transaction, suivi |
+| API | `api/` | 3061 | 🟢 auth, taux, simulation, KYC, **transactions + reçus + caisse**, audit | Cœur métier : taux, KYC, transactions, caisses, audit |
+| Dashboard | `admin/` | 3060 | 🟠 connexion, identités, **reçus**, **transactions** | Admin / opérateur : validation, pilotage, reporting |
+| Mobile | `mobile/` | Expo Go | 🟢 taux, simulateur, KYC, **opération complète + suivi** | Client final : taux, simulateur, transaction, suivi |
 
 ---
 
@@ -84,14 +84,13 @@ hadjchanges/
 │       ├── kyc/           🟢 dépôt de pièce + file de validation + décisions tracées
 │       ├── storage/       🟢 port fichiers — clés opaques, JAMAIS servi en statique
 │       ├── notifications/ 🟢 canal interne (Push/WhatsApp/SMS en brique 9)
-│       ├── transactions/  ⚪ state machine + exécution du change
-│       ├── receipts/      ⚪ import + validation des preuves de paiement
-│       ├── cash/          ⚪ soldes par devise, mouvements, clôture
+│       ├── transactions/  🟢 machine à états + reçus + `exchange-executor.ts` (l'argent bouge ici)
+│       ├── cash/          🟢 mouvements + soldes (cache recalculable)
 │       ├── compliance/    ⚪ seuils LCB-FT, alertes
 │       └── reporting/     ⚪ volumes, commissions, exports
 │
 ├── scripts-verif/
-│   └── api-check.mjs      ✅ vérification exécutable de bout en bout (96 contrôles)
+│   └── api-check.mjs      ✅ vérification exécutable de bout en bout (131 contrôles)
 │
 ├── admin/                 Next.js 15 (App Router)
 │   └── src/
@@ -101,7 +100,7 @@ hadjchanges/
 │       ├── lib/navigation.ts 🧭 matrice du menu — MÊME matrice que les @Roles de l'API
 │       └── app/
 │           ├── login         🟢 connexion équipe
-│           └── (dash)/       🟢 kyc · ⚪ taux, transactions, reçus, clients,
+│           └── (dash)/       🟢 kyc, recus, transactions · ⚪ taux, clients,
 │                             agences, caisses, rapports, equipe, audit
 │
 └── mobile/                📱 React Expo 57
@@ -217,6 +216,8 @@ n'y a qu'un parcours, une pile suffit — une barre à un seul onglet ne sert pe
 | Taux | `/(dash)/taux` | publier un taux, historique, marge par paire, alerte de fraîcheur |
 | Reçus | `/(dash)/recus` | **file de validation** des preuves de paiement |
 | KYC 🟢 | `/(dash)/kyc` | **file de validation** des identités, pièce affichée après contrôle des droits |
+| Reçus 🟢 | `/(dash)/recus` | **file de contrôle** : montant attendu en évidence, valider exécute le change |
+| Transactions 🟢 | `/(dash)/transactions` | liste filtrable + « fonds disponibles » et « remis au client » |
 | Transactions | `/(dash)/transactions` | liste temps réel, filtres, détail, export |
 | Clients | `/(dash)/clients` | fiche, plafonds, blocage, historique |
 | Agences | `/(dash)/agences` | agences + affectation des opérateurs |
@@ -251,7 +252,8 @@ Un opérateur ne modifie **jamais** un taux ni un plafond, et ne voit que son ag
                       → vérifié : scripts-verif/api-check.mjs, 65/65
 [🟢] 3. KYC           dépôt mobile + file de validation dashboard + notification + audit lisible
                       → vérifié : api-check.mjs 96/96 + boucle complète dans le navigateur
-[⚪] 4. Transaction   verrou de taux + import de reçu + validation + exécution du change
+[🟢] 4. Transaction   création + reçu + validation + exécution du change + mouvements de caisse
+                      → vérifié : api-check.mjs 131/131 + boucle complète dans le navigateur
 [⚪] 5. Suivi         timeline + historique + PDF de justificatif + export
 [⚪] 6. Caisses       agences + soldes par devise + mouvements + clôture
 [⚪] 7. Reporting     volumes, commissions, graphiques SVG, exports
