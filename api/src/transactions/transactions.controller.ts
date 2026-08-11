@@ -17,11 +17,13 @@ import type { Request, Response } from 'express';
 import type { AuthUser } from '../common/auth-user';
 import { CurrentUser, Roles } from '../common/decorators';
 import { ApiZodBody, ZBody } from '../common/zod';
+import { ExportService } from '../documents/export.service';
 import type { UploadedDocument } from '../kyc/kyc.service';
 import { ReceiptsService, type ReceiptQueueRow } from './receipts.service';
 import {
   cancelSchema,
   createTransactionSchema,
+  exportQuerySchema,
   receiptRejectSchema,
   receiptReviewSchema,
   transactionListSchema,
@@ -41,6 +43,7 @@ export class TransactionsController {
   constructor(
     private readonly transactions: TransactionsService,
     private readonly receipts: ReceiptsService,
+    private readonly exports: ExportService,
   ) {}
 
   @Roles(Role.CLIENT)
@@ -70,6 +73,31 @@ export class TransactionsController {
   @ApiOperation({ summary: 'Liste des transactions, filtrable (dashboard).' })
   list(@Query() query: unknown, @CurrentUser() current: AuthUser): Promise<TransactionView[]> {
     return this.transactions.list(transactionListSchema.parse(query), current);
+  }
+
+  /**
+   * Export des transactions. Ouvert aussi au CLIENT : `forExport` restreint
+   * alors la requête à ses propres opérations (cahier §3.2 « export de
+   * l'historique »).
+   */
+  @Get('export')
+  @ApiOperation({ summary: 'Exporter les transactions (csv ou xlsx).' })
+  async export(
+    @Query() query: unknown,
+    @CurrentUser() current: AuthUser,
+    @Res() response: Response,
+  ): Promise<void> {
+    const { format, ...filters } = exportQuerySchema.parse(query);
+    const rows = await this.transactions.forExport(transactionListSchema.parse(filters), current);
+    const buffer = await this.exports.build(rows, format);
+
+    response.setHeader('content-type', this.exports.mimeType(format));
+    response.setHeader(
+      'content-disposition',
+      `attachment; filename="${this.exports.filename(format)}"`,
+    );
+    response.setHeader('cache-control', 'no-store, private');
+    response.send(buffer);
   }
 
   @Roles(...STAFF)
@@ -126,6 +154,22 @@ export class TransactionsController {
   @ApiOperation({ summary: 'Détail d’une transaction (la sienne, ou toutes pour un agent).' })
   findOne(@Param('id') id: string, @CurrentUser() current: AuthUser): Promise<TransactionView> {
     return this.transactions.findOne(id, current);
+  }
+
+  /** Justificatif final — disponible une fois l'opération clôturée. */
+  @Get(':id/justificatif.pdf')
+  @ApiOperation({ summary: 'Télécharger le justificatif PDF de l’opération.' })
+  async justificatif(
+    @Param('id') id: string,
+    @CurrentUser() current: AuthUser,
+    @Res() response: Response,
+  ): Promise<void> {
+    const { buffer, filename } = await this.transactions.receiptPdf(id, current);
+    response.setHeader('content-type', 'application/pdf');
+    response.setHeader('content-disposition', `attachment; filename="${filename}"`);
+    response.setHeader('cache-control', 'no-store, private');
+    response.setHeader('x-robots-tag', 'noindex, nofollow');
+    response.send(buffer);
   }
 
   @Roles(Role.CLIENT)

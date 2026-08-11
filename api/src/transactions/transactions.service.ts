@@ -15,6 +15,8 @@ import {
 } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../common/auth-user';
+import { ReceiptPdfService } from '../documents/receipt-pdf.service';
+import { StorageService } from '../storage/storage.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { QuoteCalculator } from '../quotes/quote-calculator';
 import { RatesService } from '../rates/rates.service';
@@ -32,6 +34,8 @@ export class TransactionsService {
     private readonly settings: SettingsService,
     private readonly machine: TransactionStateMachine,
     private readonly audit: AuditService,
+    private readonly pdf: ReceiptPdfService,
+    private readonly storage: StorageService,
   ) {}
 
   /**
@@ -195,9 +199,83 @@ export class TransactionsService {
     return this.advance(id, TransactionStatus.PRETE_POUR_RETRAIT, 'readyAt', actor, ip);
   }
 
-  /** Remis au client : l'opération est terminée. */
-  close(id: string, actor: AuthUser, ip?: string): Promise<TransactionView> {
-    return this.advance(id, TransactionStatus.CLOTUREE, 'closedAt', actor, ip);
+  /** Remis au client : l'opération est terminée, et son justificatif est émis. */
+  async close(id: string, actor: AuthUser, ip?: string): Promise<TransactionView> {
+    const closed = await this.advance(id, TransactionStatus.CLOTUREE, 'closedAt', actor, ip);
+    // Le justificatif est produit ici, pas au téléchargement : il doit refléter
+    // l'opération telle qu'elle était à la clôture, même relu des mois après.
+    await this.ensurePdf(id);
+    return closed;
+  }
+
+  /**
+   * Justificatif final. Généré à la clôture, puis servi depuis le stockage.
+   * Régénéré si le fichier manque (montée de version, purge) — mais toujours à
+   * partir des valeurs figées dans la ligne, jamais des taux du jour.
+   */
+  async receiptPdf(id: string, viewer: AuthUser): Promise<{ buffer: Buffer; filename: string }> {
+    const transaction = await this.prisma.transaction.findUnique({
+      where: { id },
+      include: transactionInclude,
+    });
+    if (!transaction) throw new NotFoundException('Transaction introuvable.');
+    if (viewer.role === Role.CLIENT && transaction.clientId !== viewer.id) {
+      throw new NotFoundException('Transaction introuvable.');
+    }
+    if (transaction.status !== TransactionStatus.CLOTUREE) {
+      throw new ConflictException(
+        'Le justificatif n’est disponible qu’une fois l’opération clôturée.',
+      );
+    }
+
+    const key = transaction.finalReceiptPdfUrl ?? (await this.ensurePdf(id));
+    return {
+      buffer: await this.storage.read(key),
+      filename: `justificatif-${transaction.reference}.pdf`,
+    };
+  }
+
+  private async ensurePdf(id: string): Promise<string> {
+    const transaction = await this.prisma.transaction.findUnique({
+      where: { id },
+      include: transactionInclude,
+    });
+    if (!transaction) throw new NotFoundException('Transaction introuvable.');
+    if (transaction.finalReceiptPdfUrl) return transaction.finalReceiptPdfUrl;
+
+    const buffer = await this.pdf.build(transaction);
+    const stored = await this.storage.save(
+      { buffer, mimetype: 'application/pdf', originalname: `${transaction.reference}.pdf` },
+      `justificatifs/${transaction.clientId}`,
+    );
+    await this.prisma.transaction.update({
+      where: { id },
+      data: { finalReceiptPdfUrl: stored.key },
+    });
+    return stored.key;
+  }
+
+  /** Lignes complètes pour l'export — mêmes filtres que la liste écran. */
+  async forExport(query: TransactionListInput, viewer: AuthUser) {
+    const currency = query.currencyCode
+      ? await this.prisma.currency.findUnique({ where: { code: query.currencyCode } })
+      : null;
+
+    return this.prisma.transaction.findMany({
+      where: {
+        status: query.status,
+        agencyId: viewer.role === Role.OPERATEUR ? (viewer.agencyId ?? undefined) : query.agencyId,
+        createdAt: { gte: query.from, lte: query.to },
+        ...(currency
+          ? { OR: [{ sourceCurrencyId: currency.id }, { targetCurrencyId: currency.id }] }
+          : {}),
+        // Un export client ne contient que ses propres opérations.
+        ...(viewer.role === Role.CLIENT ? { clientId: viewer.id } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 5000,
+      include: transactionInclude,
+    });
   }
 
   private async advance(

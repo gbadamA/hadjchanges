@@ -184,6 +184,44 @@ export const transactions = {
     apiFetch<TransactionRow>(`/transactions/${id}/close`, { method: 'POST', token }),
 };
 
+/**
+ * Téléchargement d'un fichier protégé (export, justificatif).
+ *
+ * L'URL exige un jeton en en-tête : on ne peut donc pas se contenter d'un
+ * `<a href>`. On récupère le binaire, on déclenche la sauvegarde par une ancre
+ * temporaire, et **on révoque l'URL d'objet** — sans quoi le fichier reste en
+ * mémoire tant que l'onglet vit.
+ */
+export async function downloadProtected(
+  path: string,
+  fallbackName: string,
+  token: string,
+): Promise<void> {
+  const response = await fetch(`${API_URL}${path}`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new ApiError(
+      (JSON.parse(detail || '{}') as { message?: string }).message ?? 'Téléchargement impossible.',
+      response.status,
+    );
+  }
+
+  // Le serveur nomme le fichier ; l'en-tête fait foi sur le nom local.
+  const disposition = response.headers.get('content-disposition') ?? '';
+  const named = /filename="([^"]+)"/.exec(disposition)?.[1];
+
+  const url = URL.createObjectURL(await response.blob());
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = named ?? fallbackName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 /** Couleur de statut — miroir de `statusColors` dans `tokens.ts`. */
 export const STATUS_CLASS: Record<TransactionStatus, string> = {
   CREEE: 'bg-status-creee/15 text-status-creee',

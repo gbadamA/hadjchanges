@@ -110,6 +110,10 @@ Les transitions invalides sont refusées **côté service** par une state machin
 
 ## 6. Décisions actées
 
+- ✅ **Le justificatif est produit à la CLÔTURE, puis conservé.** Il doit rester identique s'il est
+  retéléchargé six mois plus tard, même si les taux, la commission ou la raison sociale ont changé.
+  Le régénérer à la demande donnerait un document qui bouge — inacceptable pour une pièce
+  comptable.
 - ✅ **Valider un reçu exécute le change dans la foulée.** Les deux gestes ne sont pas séparés :
   valider, c'est décider que l'argent est arrivé. Laisser une file « reçu validé, change à faire »
   créerait une attente que personne ne relève.
@@ -223,7 +227,7 @@ les deux surfaces doivent se reconnaître au premier coup d'œil. Police Plus Ja
 | 2 | **Simulateur** | simulateur mobile + verrou de taux (`Quote`) + WebSocket + auth mobile | 🟢 |
 | 3 | **KYC** | dépôt CNI/selfie, file de validation dashboard, notification, 1res pages du dashboard | 🟢 |
 | 4 | **Transaction** | création + verrou de taux + import de reçu + file de validation + exécution du change | ⚪ |
-| 5 | **Suivi** | timeline mobile, historique filtrable, PDF de justificatif, export | ⚪ |
+| 5 | **Suivi** | historique filtrable, justificatif PDF, exports Excel/CSV | 🟢 |
 | 6 | **Caisses** | agences, soldes par devise, mouvements, clôture journalière | ⚪ |
 | 7 | **Reporting** | volumes, commissions, graphiques SVG, export Excel/PDF | ⚪ |
 | 8 | **Conformité** | seuils LCB-FT, alertes, plafonds client, journal d'audit consultable | ⚪ |
@@ -278,6 +282,20 @@ qui lit des données protégées.
 transaction base.** L'un sans l'autre laisse un trou impossible à rattraper à la clôture
 journalière. La vérité des soldes est la suite des `CashMovement` ; `CashBalance` n'est qu'un cache,
 reconstructible par `CashService.recompute()`.
+
+⚠️ **Les polices PDF standard sont en WinAnsi, qui ignore l'espace fine insécable (U+202F)** —
+celle que `toLocaleString('fr-FR')` insère entre les milliers. Un montant s'imprimait
+« 200 /000 XOF ». `formatAmount` la remplace par U+00A0. ⚠️ Et **ne pas écrire ces espaces en clair
+dans le source** : invisibles en relecture, le prochain passage les prendrait pour une coquille —
+d'où la comparaison par code de caractère.
+
+⚠️ **`content-disposition` doit être dans `exposedHeaders` de la configuration CORS.** Sans lui, le
+navigateur cache l'en-tête aux requêtes inter-origines et le dashboard enregistrait les exports
+sous un nom générique au lieu du nom daté envoyé par le serveur.
+
+⚠️ **`api-check.mjs` met ses sessions en cache.** `/auth/login` est limité à 10 par minute : sans
+ce cache, le script déclenchait sa propre limite et échouait en 429 sur des vérifications saines.
+Un script qui se sabote lui-même ne prouve plus rien.
 
 ⚠️ **Ne jamais résoudre le taux courant par une requête fenêtrée** (`take: n` sur les deux
 périmètres mélangés). Passé la fenêtre, le taux propre à une agence disparaissait des candidats et

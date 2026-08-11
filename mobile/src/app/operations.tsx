@@ -1,12 +1,22 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { api, ApiError } from '../api';
 import { useAuth } from '../auth';
-import { money, type Transaction } from '../models';
+import { downloadAndShare } from '../download';
+import { money, type Transaction, type TransactionStatus } from '../models';
 import { C, R, S, STATUS, T } from '../theme';
-import { Badge, Button, Card, EmptyState, Loader, Screen } from '../ui';
+import { Badge, Button, Card, EmptyState, ErrorBanner, Loader, Screen } from '../ui';
+
+/** Filtres proposés au client — les statuts qu'il distingue vraiment. */
+const FILTERS: Array<{ value: TransactionStatus | 'TOUTES'; label: string }> = [
+  { value: 'TOUTES', label: 'Toutes' },
+  { value: 'CREEE', label: 'À payer' },
+  { value: 'RECU_SOUMIS', label: 'En contrôle' },
+  { value: 'PRETE_POUR_RETRAIT', label: 'À retirer' },
+  { value: 'CLOTUREE', label: 'Terminées' },
+];
 
 /** Historique des opérations du client (cahier §3.2 « Suivi »). */
 export default function Operations(): ReactNode {
@@ -15,6 +25,8 @@ export default function Operations(): ReactNode {
   const [rows, setRows] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<TransactionStatus | 'TOUTES'>('TOUTES');
+  const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async (): Promise<void> => {
     if (!accessToken) {
@@ -35,6 +47,27 @@ export default function Operations(): ReactNode {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const exportHistory = async (): Promise<void> => {
+    if (!accessToken) return;
+    setExporting(true);
+    setError(null);
+    try {
+      await downloadAndShare(
+        '/transactions/export?format=csv',
+        'mes-operations.csv',
+        accessToken,
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Export impossible.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // Le filtre s'applique côté client : l'historique tient en une page, un
+  // aller-retour réseau par bouton serait du gaspillage.
+  const visible = filter === 'TOUTES' ? rows : rows.filter((row) => row.status === filter);
 
   if (loading) return <Loader label="Chargement de vos opérations…" />;
 
@@ -64,6 +97,28 @@ export default function Operations(): ReactNode {
           />
         ) : null}
 
+        {accessToken && rows.length > 0 ? (
+          <>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filters}>
+              {FILTERS.map((option) => {
+                const active = option.value === filter;
+                return (
+                  <Pressable
+                    key={option.value}
+                    onPress={() => setFilter(option.value)}
+                    style={[styles.chip, active && styles.chipActive]}
+                  >
+                    <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+            <ErrorBanner message={error} />
+          </>
+        ) : null}
+
         {accessToken && !error && rows.length === 0 ? (
           <EmptyState
             title="Aucune opération"
@@ -72,7 +127,7 @@ export default function Operations(): ReactNode {
           />
         ) : null}
 
-        {rows.map((row) => (
+        {visible.map((row) => (
           <Pressable
             key={row.id}
             onPress={() => router.push({ pathname: '/transaction/[id]', params: { id: row.id } })}
@@ -100,6 +155,15 @@ export default function Operations(): ReactNode {
             </Card>
           </Pressable>
         ))}
+
+        {accessToken && rows.length > 0 ? (
+          <Button
+            label={exporting ? 'Préparation…' : 'Exporter mon historique'}
+            onPress={() => void exportHistory()}
+            variant="ghost"
+            disabled={exporting}
+          />
+        ) : null}
       </View>
     </Screen>
   );
@@ -111,4 +175,17 @@ const styles = StyleSheet.create({
   card: { gap: S.sm, borderRadius: R.md },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: S.sm },
   amount: { ...T.h2, color: C.navy },
+  filters: { marginBottom: S.xs },
+  chip: {
+    paddingHorizontal: S.lg,
+    paddingVertical: S.sm,
+    borderRadius: R.pill,
+    backgroundColor: C.surface,
+    borderWidth: 1.5,
+    borderColor: C.line,
+    marginRight: S.sm,
+  },
+  chipActive: { backgroundColor: C.navy, borderColor: C.navy },
+  chipLabel: { ...T.label, color: C.inkDim },
+  chipLabelActive: { color: C.onDark },
 });

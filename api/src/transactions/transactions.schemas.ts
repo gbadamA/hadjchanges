@@ -58,3 +58,10 @@ export type ReceiptRejectInput = z.infer<typeof receiptRejectSchema>;
 export type ReceiptReviewInput = z.infer<typeof receiptReviewSchema>;
 export type TransactionListInput = z.infer<typeof transactionListSchema>;
 export type CancelInput = z.infer<typeof cancelSchema>;
+
+/** Filtres de l'export + format demandé. */
+export const exportQuerySchema = transactionListSchema.extend({
+  format: z.enum(['csv', 'xlsx']).default('xlsx'),
+});
+
+export type ExportQueryInput = z.infer<typeof exportQuerySchema>;

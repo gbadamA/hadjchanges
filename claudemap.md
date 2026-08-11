@@ -87,10 +87,11 @@ hadjchanges/
 │       ├── transactions/  🟢 machine à états + reçus + `exchange-executor.ts` (l'argent bouge ici)
 │       ├── cash/          🟢 mouvements + soldes (cache recalculable)
 │       ├── compliance/    ⚪ seuils LCB-FT, alertes
-│       └── reporting/     ⚪ volumes, commissions, exports
+│       ├── documents/     🟢 justificatif PDF (PDFKit) + exports xlsx/CSV
+│       └── reporting/     ⚪ volumes, commissions, graphiques
 │
 ├── scripts-verif/
-│   └── api-check.mjs      ✅ vérification exécutable de bout en bout (131 contrôles)
+│   └── api-check.mjs      ✅ vérification exécutable de bout en bout (148 contrôles)
 │
 ├── admin/                 Next.js 15 (App Router)
 │   └── src/
@@ -203,7 +204,7 @@ n'y a qu'un parcours, une pile suffit — une barre à un seul onglet ne sert pe
 | Compte 🟢 | `app/compte.tsx` | Statut KYC coloré comme au dashboard, motif de rejet visible |
 | KYC 🟢 | `app/kyc.tsx` | Dépôt CNI + selfie, états en attente / rejeté (motif) / validé |
 | Onglets | `app/(tabs)/_layout.tsx` | Barre **flottante** au-dessus des gestes système |
-| Opérations | `app/(tabs)/operations.tsx` | Historique filtrable (date, devise, statut) |
+| Opérations 🟢 | `app/operations.tsx` | Historique filtrable par statut + export CSV partageable |
 | Détail | `app/transaction/[id].tsx` | Timeline des 8 statuts, import du reçu, PDF final |
 | Profil | `app/(tabs)/profil.tsx` | Statut KYC, plafonds consommés, alertes de taux |
 
@@ -217,7 +218,7 @@ n'y a qu'un parcours, une pile suffit — une barre à un seul onglet ne sert pe
 | Reçus | `/(dash)/recus` | **file de validation** des preuves de paiement |
 | KYC 🟢 | `/(dash)/kyc` | **file de validation** des identités, pièce affichée après contrôle des droits |
 | Reçus 🟢 | `/(dash)/recus` | **file de contrôle** : montant attendu en évidence, valider exécute le change |
-| Transactions 🟢 | `/(dash)/transactions` | liste filtrable + « fonds disponibles » et « remis au client » |
+| Transactions 🟢 | `/(dash)/transactions` | liste filtrable, exports Excel/CSV, justificatif PDF |
 | Transactions | `/(dash)/transactions` | liste temps réel, filtres, détail, export |
 | Clients | `/(dash)/clients` | fiche, plafonds, blocage, historique |
 | Agences | `/(dash)/agences` | agences + affectation des opérateurs |
@@ -254,7 +255,8 @@ Un opérateur ne modifie **jamais** un taux ni un plafond, et ne voit que son ag
                       → vérifié : api-check.mjs 96/96 + boucle complète dans le navigateur
 [🟢] 4. Transaction   création + reçu + validation + exécution du change + mouvements de caisse
                       → vérifié : api-check.mjs 131/131 + boucle complète dans le navigateur
-[⚪] 5. Suivi         timeline + historique + PDF de justificatif + export
+[🟢] 5. Suivi         historique filtrable + justificatif PDF + exports Excel/CSV
+                      → vérifié : api-check.mjs 148/148 + téléchargements constatés dans les 2 fronts
 [⚪] 6. Caisses       agences + soldes par devise + mouvements + clôture
 [⚪] 7. Reporting     volumes, commissions, graphiques SVG, exports
 [⚪] 8. Conformité    seuils LCB-FT + plafonds + journal d'audit

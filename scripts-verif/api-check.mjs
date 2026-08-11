@@ -83,9 +83,22 @@ const PNG_1PX = Buffer.from(
   'base64',
 );
 
-const login = async (credentials) => {
+/**
+ * Sessions mises en cache par identifiant.
+ *
+ * `/auth/login` est limité à 10 requêtes par minute et par IP — une protection
+ * voulue. Sans ce cache, le script finissait par déclencher sa propre limite et
+ * échouait en 429 sur des vérifications parfaitement saines : un script qui se
+ * sabote lui-même ne prouve plus rien.
+ */
+const sessions = new Map();
+
+const login = async (credentials, { fresh = false } = {}) => {
+  if (!fresh && sessions.has(credentials.identifier)) return sessions.get(credentials.identifier);
+
   const { status, data } = await call('POST', '/auth/login', { body: credentials });
   if (status !== 200) throw new Error(`Connexion impossible (${status}) : ${JSON.stringify(data)}`);
+  sessions.set(credentials.identifier, data);
   return data;
 };
 
@@ -836,6 +849,115 @@ async function main() {
     });
     check('un montant au-delà du plafond est refusé (403)', huge.status === 403, `reçu ${huge.status}`);
     check('le refus nomme le plafond dépassé', /plafond/i.test(String(huge.data?.message)), String(huge.data?.message));
+  }
+
+  // ------------------------------------------- justificatif PDF et exports --
+  section('Justificatif et exports');
+  {
+    const closed = await call('GET', '/transactions?status=CLOTUREE', { token: admin.accessToken });
+    const done = (closed.data ?? [])[0];
+    const open = (await call('GET', '/transactions?status=CREEE', { token: admin.accessToken }))
+      .data?.[0];
+
+    if (!done) {
+      skip('justificatif PDF', 'aucune transaction clôturée dans le jeu de données');
+    } else {
+      const pdf = await fetch(`${API}/transactions/${done.id}/justificatif.pdf`, {
+        headers: { authorization: `Bearer ${admin.accessToken}` },
+      });
+      const bytes = Buffer.from(await pdf.arrayBuffer());
+      check('le justificatif est servi (200)', pdf.status === 200, `reçu ${pdf.status}`);
+      // On teste la SIGNATURE sur les octets : un PDF vide ou une page d'erreur
+      // renverrait aussi un 200.
+      check('le fichier est bien un PDF', bytes.subarray(0, 5).toString() === '%PDF-');
+      check('le justificatif n’est pas vide', bytes.length > 1500, `${bytes.length} octets`);
+      check(
+        'il est proposé en téléchargement, sous la référence de l’opération',
+        (pdf.headers.get('content-disposition') ?? '').includes(done.reference),
+        String(pdf.headers.get('content-disposition')),
+      );
+      check(
+        'il n’est ni mis en cache ni indexé',
+        /no-store/.test(pdf.headers.get('cache-control') ?? '') &&
+          /noindex/.test(pdf.headers.get('x-robots-tag') ?? ''),
+      );
+
+      // Le document est figé : deux téléchargements donnent le même fichier.
+      const again = await fetch(`${API}/transactions/${done.id}/justificatif.pdf`, {
+        headers: { authorization: `Bearer ${admin.accessToken}` },
+      });
+      const bytes2 = Buffer.from(await again.arrayBuffer());
+      check('un justificatif retéléchargé est identique', bytes.equals(bytes2));
+
+      const stranger = await login({ identifier: '0709000002', password: CLIENT.password });
+      const stolen = await fetch(`${API}/transactions/${done.id}/justificatif.pdf`, {
+        headers: { authorization: `Bearer ${stranger.accessToken}` },
+      });
+      check('le justificatif d’autrui est introuvable (404)', stolen.status === 404, `reçu ${stolen.status}`);
+    }
+
+    if (open) {
+      const early = await call('GET', `/transactions/${open.id}/justificatif.pdf`, {
+        token: admin.accessToken,
+      });
+      check(
+        'pas de justificatif avant la clôture (409)',
+        early.status === 409,
+        `reçu ${early.status}`,
+      );
+    } else {
+      skip('justificatif prématuré', 'aucune transaction en attente de paiement');
+    }
+
+    // Export Excel.
+    const xlsx = await fetch(`${API}/transactions/export?format=xlsx`, {
+      headers: { authorization: `Bearer ${admin.accessToken}` },
+    });
+    const xlsxBytes = Buffer.from(await xlsx.arrayBuffer());
+    check('l’export Excel est servi (200)', xlsx.status === 200, `reçu ${xlsx.status}`);
+    // « PK » : un .xlsx est une archive zip. Un CSV renommé passerait sinon.
+    check('le fichier est un vrai classeur xlsx', xlsxBytes.subarray(0, 2).toString() === 'PK');
+    check(
+      'le classeur porte un nom daté',
+      /hadjchanges-transactions-\d{4}-\d{2}-\d{2}\.xlsx/.test(
+        xlsx.headers.get('content-disposition') ?? '',
+      ),
+    );
+
+    // Export CSV : c'est le BOM qui décide si Excel affiche « Opération » ou
+    // « OpÃ©ration ». À tester sur les OCTETS — `text()` retire le BOM en silence.
+    const csv = await fetch(`${API}/transactions/export?format=csv`, {
+      headers: { authorization: `Bearer ${admin.accessToken}` },
+    });
+    const csvBytes = Buffer.from(await csv.arrayBuffer());
+    check('l’export CSV est servi (200)', csv.status === 200, `reçu ${csv.status}`);
+    check(
+      'le CSV commence par un BOM UTF-8',
+      csvBytes.subarray(0, 3).toString('hex') === 'efbbbf',
+      csvBytes.subarray(0, 3).toString('hex'),
+    );
+    const header = csvBytes.subarray(3).toString('utf8').split('\r\n')[0];
+    check('les colonnes sont séparées par des points-virgules', header.split(';').length > 10);
+    check('les accents sont préservés', header.includes('Référence'), header.slice(0, 40));
+
+    // Un client exporte SON historique, pas celui du bureau.
+    const client = await login(CLIENT);
+    const mineCsv = await fetch(`${API}/transactions/export?format=csv`, {
+      headers: { authorization: `Bearer ${client.accessToken}` },
+    });
+    const mineLines = Buffer.from(await mineCsv.arrayBuffer())
+      .subarray(3)
+      .toString('utf8')
+      .split('\r\n')
+      .slice(1)
+      .filter(Boolean);
+    const allLines = csvBytes.subarray(3).toString('utf8').split('\r\n').slice(1).filter(Boolean);
+    check('un client peut exporter son historique (200)', mineCsv.status === 200, `reçu ${mineCsv.status}`);
+    check(
+      'son export ne contient que ses opérations',
+      mineLines.length > 0 && mineLines.length < allLines.length,
+      `${mineLines.length} lignes sur ${allLines.length}`,
+    );
   }
 
   // ------------------------------------------------------------------ bilan --

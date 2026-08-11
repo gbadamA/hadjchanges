@@ -76,14 +76,16 @@ Comptes du seed : admin `0700000002` / `Admin@2026`, client vérifié `070900000
   décision motivée notifiée au client, journal d'audit consultable.
 - **Brique 4 — transaction** 🟢 création depuis un devis verrouillé, import du reçu, file de
   contrôle au dashboard, exécution du change et mouvements de caisse, suivi horodaté côté client.
+- **Brique 5 — suivi** 🟢 justificatif PDF émis à la clôture, historique filtrable côté client,
+  exports Excel et CSV côté dashboard.
 - **Mobile** (Expo SDK 57) : taux poussés en direct, simulateur, verrou, comptes, vérification
   d’identité, opération de change complète et suivi.
 - **Dashboard** : connexion équipe et file de validation des identités. Les autres modules
   apparaissent grisés dans le menu tant qu’ils n’existent pas.
 
-Vérifié : `api-check.mjs` **131/131**, `tsc --noEmit` 0 erreur sur les trois briques, et la boucle
+Vérifié : `api-check.mjs` **148/148**, `tsc --noEmit` 0 erreur sur les trois briques, et la boucle
 complète constatée dans le navigateur — simulation → verrou → opération → reçu → validation au
 dashboard → change exécuté → fonds disponibles → suivi horodaté côté client.
 
-Suite : brique 5 (suivi — justificatif PDF et exports). Roadmap complète au §9 de
-[CLAUDE.md](CLAUDE.md).
+Suite : brique 6 (caisses — soldes par devise, mouvements, clôture journalière). Roadmap
+complète au §9 de [CLAUDE.md](CLAUDE.md).

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ApiError,
+  downloadProtected,
   STATUS_CLASS,
   transactions,
   type TransactionRow,
@@ -36,6 +37,7 @@ export default function TransactionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -69,13 +71,68 @@ export default function TransactionsPage() {
     }
   }
 
+  async function exportAs(format: 'xlsx' | 'csv') {
+    if (!token) return;
+    setExporting(true);
+    setError(null);
+    try {
+      const filters = status === 'TOUTES' ? '' : `&status=${status}`;
+      // L'export suit le filtre affiché : exporter autre chose que ce qu'on a
+      // sous les yeux serait déroutant en réunion.
+      await downloadProtected(
+        `/api/transactions/export?format=${format}${filters}`,
+        `transactions.${format}`,
+        token,
+      );
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : 'Export impossible.');
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function downloadJustificatif(row: TransactionRow) {
+    if (!token) return;
+    setBusy(row.id);
+    setError(null);
+    try {
+      await downloadProtected(
+        `/api/transactions/${row.id}/justificatif.pdf`,
+        `justificatif-${row.reference}.pdf`,
+        token,
+      );
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : 'Justificatif indisponible.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <header className="space-y-1">
-        <h1 className="font-display text-h1">Transactions</h1>
-        <p className="text-light-muted dark:text-dark-muted">
-          Toutes les opérations de change, du dépôt du reçu à la remise des fonds.
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div className="space-y-1">
+          <h1 className="font-display text-h1">Transactions</h1>
+          <p className="text-light-muted dark:text-dark-muted">
+            Toutes les opérations de change, du dépôt du reçu à la remise des fonds.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => void exportAs('xlsx')}
+            disabled={exporting || rows.length === 0}
+            className="rounded-sm bg-primary px-4 py-2 text-body font-medium text-white transition hover:bg-primary-hover disabled:opacity-40"
+          >
+            Export Excel
+          </button>
+          <button
+            onClick={() => void exportAs('csv')}
+            disabled={exporting || rows.length === 0}
+            className="rounded-sm border border-light-border px-4 py-2 text-body font-medium transition hover:border-tertiary disabled:opacity-40 dark:border-dark-border"
+          >
+            CSV
+          </button>
+        </div>
       </header>
 
       <div className="flex flex-wrap gap-2">
@@ -174,6 +231,15 @@ export default function TransactionsPage() {
                       className="rounded-sm bg-primary px-3 py-1.5 text-caption font-medium text-white transition hover:bg-primary-hover disabled:opacity-40"
                     >
                       Remis au client
+                    </button>
+                  ) : null}
+                  {row.status === 'CLOTUREE' ? (
+                    <button
+                      onClick={() => void downloadJustificatif(row)}
+                      disabled={busy === row.id}
+                      className="rounded-sm border border-light-border px-3 py-1.5 text-caption font-medium transition hover:border-tertiary disabled:opacity-40 dark:border-dark-border"
+                    >
+                      Justificatif
                     </button>
                   ) : null}
                 </td>

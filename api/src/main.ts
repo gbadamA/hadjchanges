@@ -13,7 +13,14 @@ async function bootstrap(): Promise<void> {
   app.use(helmet());
   app.use(cookieParser());
   app.setGlobalPrefix('api');
-  app.enableCors({ origin: env.corsOrigins, credentials: true });
+  app.enableCors({
+    origin: env.corsOrigins,
+    credentials: true,
+    // ⚠️ Sans cet `exposedHeaders`, le navigateur cache `content-disposition`
+    // aux requêtes inter-origines : le dashboard enregistrait les exports sous
+    // un nom générique au lieu du nom daté envoyé par le serveur.
+    exposedHeaders: ['content-disposition'],
+  });
   // Pas de `ValidationPipe` globale : la validation se fait en Zod, au plus
   // près du contrat (`@ZBody`). Deux piles de validation, c'est une de trop.
 

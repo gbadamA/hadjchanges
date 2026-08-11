@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { api, ApiError, type PickedFile, type PublicSettings } from '../../api';
 import { useAuth } from '../../auth';
+import { downloadAndShare } from '../../download';
 import { DEPOSIT_LABEL, money, type Transaction } from '../../models';
 import { C, R, S, STATUS, STATUS_HINT, T } from '../../theme';
 import { Badge, Button, Card, EmptyState, ErrorBanner, Loader, Screen } from '../../ui';
@@ -74,6 +75,23 @@ export default function TransactionDetail(): ReactNode {
       setTransaction(await api.submitReceipt(transaction.id, file, accessToken));
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'Envoi du reçu impossible.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const getJustificatif = async (): Promise<void> => {
+    if (!accessToken || !transaction) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await downloadAndShare(
+        `/transactions/${transaction.id}/justificatif.pdf`,
+        `justificatif-${transaction.reference}.pdf`,
+        accessToken,
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Justificatif indisponible.');
     } finally {
       setBusy(false);
     }
@@ -187,6 +205,20 @@ export default function TransactionDetail(): ReactNode {
               disabled={busy}
             />
             <Button label="Annuler l’opération" onPress={() => void cancel()} variant="ghost" />
+          </Card>
+        ) : null}
+
+        {transaction.status === 'CLOTUREE' ? (
+          <Card style={styles.action}>
+            <Text style={T.title}>Justificatif</Text>
+            <Text style={T.bodyMute}>
+              Conservez ce document : il peut vous être demandé en cas de contrôle.
+            </Text>
+            <Button
+              label={busy ? 'Préparation…' : 'Télécharger le justificatif'}
+              onPress={() => void getJustificatif()}
+              disabled={busy}
+            />
           </Card>
         ) : null}
 
