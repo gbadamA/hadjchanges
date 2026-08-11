@@ -55,6 +55,34 @@ async function call(method, path, { token, body } = {}) {
   return { status: response.status, data };
 }
 
+/** Dépôt multipart — le KYC et les reçus passent par des fichiers, pas du JSON. */
+async function upload(path, { token, fields = {}, files = {} }) {
+  const form = new FormData();
+  for (const [key, value] of Object.entries(fields)) form.append(key, String(value));
+  for (const [key, file] of Object.entries(files)) {
+    form.append(key, new Blob([file.content], { type: file.type }), file.name);
+  }
+  const response = await fetch(`${API}${path}`, {
+    method: 'POST',
+    headers: token ? { authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  const text = await response.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text;
+  }
+  return { status: response.status, data };
+}
+
+/** PNG 1×1 valide — assez pour prouver la chaîne de dépôt sans embarquer d'image. */
+const PNG_1PX = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
+
 const login = async (credentials) => {
   const { status, data } = await call('POST', '/auth/login', { body: credentials });
   if (status !== 200) throw new Error(`Connexion impossible (${status}) : ${JSON.stringify(data)}`);
@@ -448,6 +476,154 @@ async function main() {
       );
       socket.close();
     }
+  }
+
+  // ------------------------------------------------------- vérification KYC --
+  section('Vérification d’identité (KYC)');
+  {
+    const suffix = Date.now().toString().slice(-7);
+    const candidate = { phone: `05${suffix}1`, password: 'Kyc@2026Test' };
+    const registered = await call('POST', '/auth/register', {
+      body: {
+        firstName: 'Awa',
+        lastName: 'Traoré',
+        phone: candidate.phone,
+        password: candidate.password,
+      },
+    });
+    const token = registered.data?.accessToken;
+
+    const initial = await call('GET', '/kyc/me', { token });
+    check('un compte neuf n’a aucun dossier d’identité', initial.data?.status === 'NON_SOUMIS' && initial.data?.document === null);
+
+    const noFile = await upload('/kyc/documents', { token, fields: { type: 'CNI' } });
+    check('déposer sans fichier est refusé (400)', noFile.status === 400, `reçu ${noFile.status}`);
+
+    const badFormat = await upload('/kyc/documents', {
+      token,
+      fields: { type: 'CNI' },
+      files: { document: { content: 'MZ exécutable', type: 'application/x-msdownload', name: 'piece.exe' } },
+    });
+    check('un format non image/PDF est refusé (400)', badFormat.status === 400, `reçu ${badFormat.status}`);
+
+    const submitted = await upload('/kyc/documents', {
+      token,
+      fields: { type: 'CNI', documentNumber: 'CI0042198' },
+      files: { document: { content: PNG_1PX, type: 'image/png', name: 'cni.png' } },
+    });
+    check('le dépôt d’une pièce valide est accepté (201)', submitted.status === 201, `reçu ${submitted.status}`);
+    check('le dossier part en attente de vérification', submitted.data?.status === 'EN_ATTENTE');
+    check('aucune clé de stockage ne sort de l’API', !JSON.stringify(submitted.data).includes('kyc/'), JSON.stringify(submitted.data));
+
+    const profile = await call('GET', '/users/me', { token });
+    check('le compte bascule en attente de vérification', profile.data?.kycStatus === 'EN_ATTENTE');
+
+    const again = await upload('/kyc/documents', {
+      token,
+      fields: { type: 'PASSEPORT' },
+      files: { document: { content: PNG_1PX, type: 'image/png', name: 'passeport.png' } },
+    });
+    check('re-déposer pendant l’examen est refusé (409)', again.status === 409, `reçu ${again.status}`);
+
+    // La file de traitement : réservée aux agents, jamais aux clients.
+    const clientQueue = await call('GET', '/kyc/queue', { token });
+    check('un client ne voit pas la file KYC (403)', clientQueue.status === 403, `reçu ${clientQueue.status}`);
+
+    const queue = await call('GET', '/kyc/queue', { token: admin.accessToken });
+    const mine = (queue.data ?? []).find((row) => row.id === submitted.data?.id);
+    check('le dossier apparaît dans la file de l’agent', mine !== undefined);
+    check('la file porte l’identité du client', mine?.client?.phone === candidate.phone, JSON.stringify(mine?.client ?? null));
+
+    // Accès au fichier : c'est ici que se joue la fuite de données.
+    const fileUrl = `/kyc/documents/${submitted.data?.id}/file`;
+    const anonymous = await fetch(`${API}${fileUrl}`);
+    check('la pièce n’est pas lisible sans jeton (401)', anonymous.status === 401, `reçu ${anonymous.status}`);
+
+    const stranger = await login({ identifier: '0709000002', password: CLIENT.password });
+    const stolen = await fetch(`${API}${fileUrl}`, {
+      headers: { authorization: `Bearer ${stranger.accessToken}` },
+    });
+    check('la pièce d’autrui est introuvable (404)', stolen.status === 404, `reçu ${stolen.status}`);
+
+    const owner = await fetch(`${API}${fileUrl}`, { headers: { authorization: `Bearer ${token}` } });
+    check('le propriétaire relit sa pièce (200)', owner.status === 200, `reçu ${owner.status}`);
+    check('la pièce n’est ni mise en cache ni indexée', /no-store/.test(owner.headers.get('cache-control') ?? '') && /noindex/.test(owner.headers.get('x-robots-tag') ?? ''));
+
+    const byAgent = await fetch(`${API}${fileUrl}`, {
+      headers: { authorization: `Bearer ${admin.accessToken}` },
+    });
+    check('l’agent habilité voit la pièce (200)', byAgent.status === 200, `reçu ${byAgent.status}`);
+    check('la pièce servie fait bien le poids du fichier déposé', Number(byAgent.headers.get('content-length')) === PNG_1PX.byteLength);
+
+    const noSelfie = await fetch(`${API}${fileUrl}?kind=selfie`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    check('un selfie absent répond 404', noSelfie.status === 404, `reçu ${noSelfie.status}`);
+
+    // Rejet : le motif est obligatoire et doit revenir au client.
+    const vagueReject = await call('POST', `/kyc/documents/${submitted.data?.id}/reject`, {
+      token: admin.accessToken,
+      body: { reason: 'flou' },
+    });
+    check('un rejet sans motif explicite est refusé (400)', vagueReject.status === 400, `reçu ${vagueReject.status}`);
+
+    const reason = 'Photo illisible : les quatre coins de la pièce doivent être visibles.';
+    const rejected = await call('POST', `/kyc/documents/${submitted.data?.id}/reject`, {
+      token: admin.accessToken,
+      body: { reason },
+    });
+    check('le rejet motivé est accepté (201)', rejected.status === 201, `reçu ${rejected.status}`);
+
+    const afterReject = await call('GET', '/kyc/me', { token });
+    check('le client voit son dossier rejeté', afterReject.data?.status === 'REJETE');
+    check('le motif du rejet lui est transmis', afterReject.data?.document?.rejectReason === reason, String(afterReject.data?.document?.rejectReason));
+
+    const notifications = await call('GET', '/notifications', { token });
+    check('le rejet a produit une notification', (notifications.data ?? []).some((row) => row.body.includes(reason)));
+
+    const twice = await call('POST', `/kyc/documents/${submitted.data?.id}/reject`, {
+      token: admin.accessToken,
+      body: { reason },
+    });
+    check('un dossier déjà tranché ne se retranche pas (409)', twice.status === 409, `reçu ${twice.status}`);
+
+    // Re-soumission après rejet : explicitement prévue par le cahier §3.2.
+    const resubmitted = await upload('/kyc/documents', {
+      token,
+      fields: { type: 'CNI' },
+      files: {
+        document: { content: PNG_1PX, type: 'image/png', name: 'cni-2.png' },
+        selfie: { content: PNG_1PX, type: 'image/jpeg', name: 'selfie.jpg' },
+      },
+    });
+    check('la re-soumission après rejet est acceptée (201)', resubmitted.status === 201, `reçu ${resubmitted.status}`);
+    check('le selfie est pris en compte', resubmitted.data?.hasSelfie === true);
+    const cleared = await call('GET', '/kyc/me', { token });
+    check('le motif de l’ancien rejet disparaît du compte', cleared.data?.document?.rejectReason === null);
+
+    const operateur = await login(OPERATEUR);
+    const approved = await call('POST', `/kyc/documents/${resubmitted.data?.id}/approve`, {
+      token: operateur.accessToken,
+    });
+    check('l’opérateur peut valider une identité (201)', approved.status === 201, `reçu ${approved.status}`);
+
+    const verified = await call('GET', '/users/me', { token });
+    check('le compte devient vérifié', verified.data?.kycStatus === 'VALIDE');
+
+    const blockedResubmit = await upload('/kyc/documents', {
+      token,
+      fields: { type: 'CNI' },
+      files: { document: { content: PNG_1PX, type: 'image/png', name: 'cni-3.png' } },
+    });
+    check('un compte déjà vérifié ne redépose pas (409)', blockedResubmit.status === 409, `reçu ${blockedResubmit.status}`);
+
+    const trace = await call('GET', '/audit?entity=KycDocument&take=20', { token: admin.accessToken });
+    const actions = (trace.data ?? []).map((row) => row.action);
+    check(
+      'les décisions d’identité sont tracées à l’audit',
+      actions.includes('kyc.approve') && actions.includes('kyc.reject'),
+      actions.slice(0, 5).join(', '),
+    );
   }
 
   // ------------------------------------------------------------------ bilan --

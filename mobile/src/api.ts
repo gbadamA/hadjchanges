@@ -78,6 +78,65 @@ export interface QuoteRequest {
   agencyId?: string | null;
 }
 
+/** Fichier choisi dans la galerie ou pris à l'appareil photo. */
+export interface PickedFile {
+  uri: string;
+  name: string;
+  type: string;
+}
+
+export interface KycState {
+  status: 'NON_SOUMIS' | 'EN_ATTENTE' | 'VALIDE' | 'REJETE';
+  document: {
+    id: string;
+    type: string;
+    status: string;
+    hasSelfie: boolean;
+    rejectReason: string | null;
+    createdAt: string;
+  } | null;
+}
+
+/**
+ * Dépôt de fichiers. **Ne jamais poser soi-même l'en-tête `content-type`** sur
+ * un envoi multipart : le moteur doit y placer sa frontière (`boundary`), sinon
+ * le serveur ne sait pas découper le corps et rejette tout.
+ */
+async function upload<T>(
+  path: string,
+  { token, fields, files }: { token: string; fields: Record<string, string>; files: Record<string, PickedFile> },
+): Promise<T> {
+  const form = new FormData();
+  for (const [key, value] of Object.entries(fields)) form.append(key, value);
+  for (const [key, file] of Object.entries(files)) {
+    form.append(key, { uri: file.uri, name: file.name, type: file.type } as unknown as Blob);
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${BASE_URL}/api${path}`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}` },
+      body: form,
+    });
+  } catch {
+    throw new ApiError('Envoi impossible. Vérifiez votre réseau.', 0);
+  }
+
+  const text = await response.text();
+  const data: unknown = text ? JSON.parse(text) : null;
+  if (!response.ok) {
+    const payload = data as { message?: string; errors?: Array<{ message: string }> } | null;
+    throw new ApiError(
+      payload?.errors?.map((issue) => issue.message).join('\n') ??
+        payload?.message ??
+        'Envoi refusé.',
+      response.status,
+    );
+  }
+  return data as T;
+}
+
 export const api = {
   /** Taux du jour — accessible sans compte (cahier §3.2). */
   rates: (agencyId?: string): Promise<RateRow[]> =>
@@ -94,6 +153,22 @@ export const api = {
   quote: (id: string, token: string): Promise<Quote> => request<Quote>(`/quotes/${id}`, { token }),
 
   me: (token: string): Promise<Profile> => request<Profile>('/users/me', { token }),
+
+  kyc: (token: string): Promise<KycState> => request<KycState>('/kyc/me', { token }),
+
+  /** Dépôt de la pièce d'identité — le selfie est facultatif mais recommandé. */
+  submitKyc: (
+    input: { type: string; documentNumber?: string; document: PickedFile; selfie?: PickedFile },
+    token: string,
+  ): Promise<KycState['document']> =>
+    upload<KycState['document']>('/kyc/documents', {
+      token,
+      fields: {
+        type: input.type,
+        ...(input.documentNumber ? { documentNumber: input.documentNumber } : {}),
+      },
+      files: { document: input.document, ...(input.selfie ? { selfie: input.selfie } : {}) },
+    }),
 
   register: (input: {
     firstName: string;

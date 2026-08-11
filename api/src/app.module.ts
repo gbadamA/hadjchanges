@@ -9,11 +9,14 @@ import { JwtAuthGuard, RolesGuard } from './common/guards';
 import { loadEnv } from './config/env';
 import { CurrenciesModule } from './currencies/currencies.module';
 import { HealthController } from './health.controller';
+import { KycModule } from './kyc/kyc.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { QuotesModule } from './quotes/quotes.module';
 import { RatesModule } from './rates/rates.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { SettingsModule } from './settings/settings.module';
+import { StorageModule } from './storage/storage.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -23,8 +26,11 @@ import { UsersModule } from './users/users.module';
     PrismaModule,
     AuditModule,
     SettingsModule,
+    StorageModule,
+    NotificationsModule,
     AuthModule,
     UsersModule,
+    KycModule,
     CurrenciesModule,
     RealtimeModule,
     RatesModule,

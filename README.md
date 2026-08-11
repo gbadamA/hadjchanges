@@ -72,12 +72,16 @@ Comptes du seed : admin `0700000002` / `Admin@2026`, client vérifié `070900000
   seed ivoirien.
 - **Brique 2 — simulateur** 🟢 simulation publique, verrou de taux (`Quote`), diffusion des taux
   en direct par WebSocket, comptes clients sur mobile.
-- **Mobile** (Expo SDK 57) : taux du jour poussés en direct, simulateur, verrou, inscription,
-  connexion, compte.
-- **Dashboard** : design system posé, aucune page encore écrite.
+- **Brique 3 — KYC** 🟢 dépôt de pièce et selfie sur mobile, file de validation au dashboard,
+  décision motivée notifiée au client, journal d'audit consultable.
+- **Mobile** (Expo SDK 57) : taux poussés en direct, simulateur, verrou, inscription, connexion,
+  compte, vérification d’identité.
+- **Dashboard** : connexion équipe et file de validation des identités. Les autres modules
+  apparaissent grisés dans le menu tant qu’ils n’existent pas.
 
-Vérifié : `api-check.mjs` **65/65**, `tsc --noEmit` 0 erreur sur l'API et le mobile, rendu et
-mise à jour en direct confirmés dans le navigateur.
+Vérifié : `api-check.mjs` **96/96**, `tsc --noEmit` 0 erreur sur les trois briques, et la boucle
+complète constatée dans le navigateur — dépôt mobile → validation au dashboard → « Identité
+vérifiée » côté client.
 
-Suite : brique 3 (KYC — dépôt de pièce et file de validation). Roadmap complète au §9 de
-[CLAUDE.md](CLAUDE.md).
+Suite : brique 4 (la transaction — import du reçu, validation, exécution du change). Roadmap
+complète au §9 de [CLAUDE.md](CLAUDE.md).

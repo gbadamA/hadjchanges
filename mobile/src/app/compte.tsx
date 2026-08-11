@@ -7,6 +7,14 @@ import { KYC_LABEL, type KycStatus } from '../models';
 import { C, S, T } from '../theme';
 import { Badge, Button, Card, EmptyState, Screen } from '../ui';
 
+/** Ce que le statut veut dire pour le client, en une phrase actionnable. */
+const KYC_HINT: Record<KycStatus, string> = {
+  NON_SOUMIS: 'Déposez votre pièce d’identité pour pouvoir effectuer une opération de change.',
+  EN_ATTENTE: 'Votre pièce est en cours de vérification. Vous serez prévenu dès qu’elle est validée.',
+  VALIDE: 'Votre identité est vérifiée : vous pouvez changer vos devises.',
+  REJETE: 'Votre pièce a été refusée. Corrigez le point signalé et déposez-en une nouvelle.',
+};
+
 /** Couleur du statut KYC — même code couleur que le dashboard. */
 const KYC_TONE: Record<KycStatus, { color: string; soft: string }> = {
   NON_SOUMIS: { color: C.textMute, soft: C.surface2 },
@@ -55,14 +63,16 @@ export default function Compte(): ReactNode {
           ) : null}
         </Card>
 
-        {/* La vérification d'identité arrive à la brique suivante ; annoncer
-            l'étape vaut mieux qu'un écran muet. */}
         <Card style={styles.card}>
           <Text style={T.title}>Vérification d’identité</Text>
-          <Text style={T.bodyMute}>
-            Le dépôt de votre pièce d’identité sera disponible très prochainement. Il est requis
-            avant toute opération de change.
-          </Text>
+          <Text style={T.bodyMute}>{KYC_HINT[profile.kycStatus]}</Text>
+          {profile.kycStatus !== 'VALIDE' ? (
+            <Button
+              label={profile.kycStatus === 'REJETE' ? 'Déposer une nouvelle pièce' : 'Vérifier mon identité'}
+              onPress={() => router.push('/kyc')}
+              variant={profile.kycStatus === 'EN_ATTENTE' ? 'ghost' : 'primary'}
+            />
+          ) : null}
         </Card>
 
         <Button label="Se déconnecter" onPress={() => void signOut()} variant="ghost" />

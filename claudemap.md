@@ -47,9 +47,9 @@ caisse tenue, tout tracé.
 
 | Brique | Dossier | Port | Statut | Rôle |
 |--------|---------|------|--------|------|
-| API | `api/` | 3061 | 🟢 auth, RBAC, devises, taux, **simulation + verrou**, WebSocket | Cœur métier : taux, KYC, transactions, caisses, audit |
-| Dashboard | `admin/` | 3060 | ⚪ design system seul | Admin / opérateur : validation, pilotage, reporting |
-| Mobile | `mobile/` | Expo Go | 🟢 taux en direct, simulateur, verrou, comptes | Client final : taux, simulateur, transaction, suivi |
+| API | `api/` | 3061 | 🟢 auth, RBAC, devises, taux, simulation + verrou, WebSocket, **KYC**, audit | Cœur métier : taux, KYC, transactions, caisses, audit |
+| Dashboard | `admin/` | 3060 | 🟠 connexion + **file de validation des identités** | Admin / opérateur : validation, pilotage, reporting |
+| Mobile | `mobile/` | Expo Go | 🟢 taux en direct, simulateur, verrou, comptes, **KYC** | Client final : taux, simulateur, transaction, suivi |
 
 ---
 
@@ -81,38 +81,41 @@ hadjchanges/
 │       ├── agencies/      🟢 agences (CRUD)
 │       ├── quotes/        🟢 simulation + verrouillage — `quote-calculator.ts` = LE calcul du change
 │       ├── realtime/      🟢 passerelle WebSocket `/rates` (diffusion des taux)
-│       ├── kyc/           ⚪ dépôt de pièce + file de validation
+│       ├── kyc/           🟢 dépôt de pièce + file de validation + décisions tracées
+│       ├── storage/       🟢 port fichiers — clés opaques, JAMAIS servi en statique
+│       ├── notifications/ 🟢 canal interne (Push/WhatsApp/SMS en brique 9)
 │       ├── transactions/  ⚪ state machine + exécution du change
 │       ├── receipts/      ⚪ import + validation des preuves de paiement
 │       ├── cash/          ⚪ soldes par devise, mouvements, clôture
 │       ├── compliance/    ⚪ seuils LCB-FT, alertes
-│       ├── reporting/     ⚪ volumes, commissions, exports
-│       ├── notifications/ ⚪ Expo Push · WhatsApp/SMS · email
-│       ├── storage/       ⚪ port fichiers (disque en dev, S3 en prod)
-│       └── realtime/      ⚪ passerelle WebSocket (taux + statuts)
+│       └── reporting/     ⚪ volumes, commissions, exports
 │
 ├── scripts-verif/
-│   └── api-check.mjs      ✅ vérification exécutable du socle (39 contrôles)
+│   └── api-check.mjs      ✅ vérification exécutable de bout en bout (96 contrôles)
 │
 ├── admin/                 Next.js 15 (App Router)
 │   └── src/
-│       ├── lib/tokens.ts  🎨 SOURCE DE VÉRITÉ visuelle (miroir du preset Tailwind)
-│       ├── lib/api.ts     🔌 client API
+│       ├── lib/tokens.ts     🎨 SOURCE DE VÉRITÉ visuelle (miroir du tailwind.config)
+│       ├── lib/api.ts        🔌 client API — 1 SEUL point d'accès réseau
+│       ├── lib/auth.tsx      🔐 session équipe (access token EN MÉMOIRE)
+│       ├── lib/navigation.ts 🧭 matrice du menu — MÊME matrice que les @Roles de l'API
 │       └── app/
-│           ├── login
-│           └── (dash)/    taux · transactions · reçus · kyc · clients ·
-│                          agences · caisses · rapports · equipe · audit
+│           ├── login         🟢 connexion équipe
+│           └── (dash)/       🟢 kyc · ⚪ taux, transactions, reçus, clients,
+│                             agences, caisses, rapports, equipe, audit
 │
-└── mobile/                📱 React Expo 54
+└── mobile/                📱 React Expo 57
     ├── app.json           ⚙️ Config Expo (safe-area, back gesture off)
     └── src/
         ├── theme.ts       🎨 Tokens (C couleurs, G dégradés, R, S, F, T, shadow)
-        ├── ui.tsx         🧱 Primitives SANS navigation (Screen, Card, Button, Badge…)
+        ├── ui.tsx         🧱 Primitives SANS navigation (Screen, Card, Button, Badge,
+        │                     FormScreen clavier-safe, Field, Segmented, ErrorBanner)
         ├── components.tsx 🧩 Composés métier (RateCard · à venir : TxTimeline…)
         ├── models.ts      📐 Types miroirs du contrat API + helpers (fcfa, formatRate)
         ├── api.ts         🔌 Client HTTP — 1 SEUL point d'accès réseau
         ├── useApi.ts      ⏳ Hook useAsync (loading / error / reload)
-        ├── auth.tsx       ⚪ Auth JWT persistée (AsyncStorage) — à faire
+        ├── auth.tsx       🟢 Auth JWT persistée + promesse de refresh PARTAGÉE
+        ├── useRates.ts    🟢 taux du jour, tenus à jour par WebSocket
         └── app/           🖥️ Écrans (Expo Router) — voir §6
 ```
 
@@ -199,7 +202,7 @@ n'y a qu'un parcours, une pile suffit — une barre à un seul onglet ne sert pe
 | Connexion 🟢 | `app/connexion.tsx` | `FormScreen` : le clavier ne masque jamais le champ, erreur toujours affichée |
 | Inscription 🟢 | `app/inscription.tsx` | Annonce le KYC **dès l'inscription** : pas de blocage découvert au moment de payer |
 | Compte 🟢 | `app/compte.tsx` | Statut KYC coloré comme au dashboard, motif de rejet visible |
-| KYC | `app/kyc.tsx` | Dépôt CNI + selfie, états en attente / rejeté (motif) / validé |
+| KYC 🟢 | `app/kyc.tsx` | Dépôt CNI + selfie, états en attente / rejeté (motif) / validé |
 | Onglets | `app/(tabs)/_layout.tsx` | Barre **flottante** au-dessus des gestes système |
 | Opérations | `app/(tabs)/operations.tsx` | Historique filtrable (date, devise, statut) |
 | Détail | `app/transaction/[id].tsx` | Timeline des 8 statuts, import du reçu, PDF final |
@@ -209,11 +212,11 @@ n'y a qu'un parcours, une pile suffit — une barre à un seul onglet ne sert pe
 
 | Page | Route | Rôle |
 |---|---|---|
-| Connexion | `/login` | équipe (2FA) |
+| Connexion 🟢 | `/login` | équipe (2FA à venir) |
 | Vue d'ensemble | `/(dash)` | volumes, commissions, top devises, alertes |
 | Taux | `/(dash)/taux` | publier un taux, historique, marge par paire, alerte de fraîcheur |
 | Reçus | `/(dash)/recus` | **file de validation** des preuves de paiement |
-| KYC | `/(dash)/kyc` | **file de validation** des identités |
+| KYC 🟢 | `/(dash)/kyc` | **file de validation** des identités, pièce affichée après contrôle des droits |
 | Transactions | `/(dash)/transactions` | liste temps réel, filtres, détail, export |
 | Clients | `/(dash)/clients` | fiche, plafonds, blocage, historique |
 | Agences | `/(dash)/agences` | agences + affectation des opérateurs |
@@ -246,7 +249,8 @@ Un opérateur ne modifie **jamais** un taux ni un plafond, et ne voit que son ag
                       → vérifié : scripts-verif/api-check.mjs, 39/39
 [🟢] 2. Simulateur    simulateur mobile + verrou de taux (Quote) + WebSocket + comptes mobiles
                       → vérifié : scripts-verif/api-check.mjs, 65/65
-[⚪] 3. KYC           dépôt de pièce + file de validation dashboard + notification
+[🟢] 3. KYC           dépôt mobile + file de validation dashboard + notification + audit lisible
+                      → vérifié : api-check.mjs 96/96 + boucle complète dans le navigateur
 [⚪] 4. Transaction   verrou de taux + import de reçu + validation + exécution du change
 [⚪] 5. Suivi         timeline + historique + PDF de justificatif + export
 [⚪] 6. Caisses       agences + soldes par devise + mouvements + clôture

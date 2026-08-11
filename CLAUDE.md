@@ -110,6 +110,15 @@ Les transitions invalides sont refusées **côté service** par une state machin
 
 ## 6. Décisions actées
 
+- ✅ **Un seul dossier d'identité vivant à la fois.** Re-déposer pendant l'examen créerait deux
+  files pour la même personne ; re-déposer une fois validé n'a pas de sens. La re-soumission
+  **après rejet** est en revanche explicitement ouverte (cahier §3.2), et elle efface le motif
+  précédent, qui portait sur l'ancien dépôt.
+- ✅ **Un rejet exige un motif d'au moins 10 caractères.** C'est ce texte que le client reçoit :
+  un rejet sans explication le laisse bloqué sans savoir quoi corriger, et finit en appel au
+  service client.
+- ✅ **Le journal d'audit est en lecture seule et réservé à l'encadrement** (`GET /audit`,
+  ADMIN/SUPER_ADMIN). Ni écriture ni suppression par l'API : un journal modifiable ne prouve rien.
 - ✅ **Le verrou est un objet à part entière** (`Quote`), pas un champ sur la transaction. Une
   simulation ne persiste rien ; verrouiller crée un devis daté, nominatif et **consommable une seule
   fois** (`consumedAt`) — deux transactions ne peuvent pas s'adosser au même prix garanti.
@@ -204,7 +213,7 @@ les deux surfaces doivent se reconnaître au premier coup d'œil. Police Plus Ja
 | 0 | **Scaffold** | structure, CLAUDE.md, claudemap, schéma Prisma, design system des deux surfaces | 🟢 |
 | 1 | **Socle** | Docker + migrations + auth JWT/RBAC + seed CI + devises & taux (CRUD versionné) | 🟢 |
 | 2 | **Simulateur** | simulateur mobile + verrou de taux (`Quote`) + WebSocket + auth mobile | 🟢 |
-| 3 | **KYC** | dépôt CNI/selfie, file de validation dashboard, notification | ⚪ |
+| 3 | **KYC** | dépôt CNI/selfie, file de validation dashboard, notification, 1res pages du dashboard | 🟢 |
 | 4 | **Transaction** | création + verrou de taux + import de reçu + file de validation + exécution du change | ⚪ |
 | 5 | **Suivi** | timeline mobile, historique filtrable, PDF de justificatif, export | ⚪ |
 | 6 | **Caisses** | agences, soldes par devise, mouvements, clôture journalière | ⚪ |
@@ -244,6 +253,18 @@ l'affichage (`formatRate`). Un `Number()` prématuré, c'est un écart de caisse
 Erreur trompeuse : `Unable to resolve "./contrib/parseuri.js" from engine.io-client` — un fichier qui
 existe pourtant. Correctif dans `mobile/metro.config.js`. Ne pas le supprimer en croyant à un
 reliquat : sans lui, l'app ne bundle plus du tout.
+
+⚠️ **Aucun fichier déposé n'est servi en statique.** Pièces d'identité et reçus passent par
+`StorageService` (clé opaque en base, nom d'origine jeté) et se lisent par un contrôleur qui
+vérifie les droits — `no-store`, `noindex`. Une photo de CNI derrière une URL devinable est une
+fuite, même avec un nom aléatoire : les URL fuient par les journaux et l'historique. Côté
+dashboard, l'image se charge donc par `fetch` + `URL.createObjectURL`, jamais par un `<img src>`
+direct. **Ne jamais « simplifier » en exposant `uploads/`.**
+
+⚠️ **Un `return` anticipé dans un chargement doit toujours retomber sur `setLoading(false)`.**
+L'écran KYC restait figé sur « Ouverture de votre dossier… » pour un visiteur sans session : le
+garde `if (!accessToken) return;` sautait la fin du chargement. Vérifier ce cas sur chaque écran
+qui lit des données protégées.
 
 ⚠️ **Le calcul du change n'existe qu'à UN endroit** : `api/src/quotes/quote-calculator.ts`. Le
 simulateur, le verrou et (bientôt) l'exécution de la transaction l'appellent tous. Ne jamais
