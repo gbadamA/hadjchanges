@@ -157,6 +157,7 @@ model User {
   validatedReceipts PaymentReceipt[]  @relation("ReceiptValidator")
   publishedRates    ExchangeRate[]
   cashMovements     CashMovement[]
+  cashClosures      CashClosure[]
   auditLogs         AuditLog[]
   notifications     Notification[]
   pushTokens        PushToken[]
@@ -231,6 +232,7 @@ model Agency {
   staff         User[]         @relation("AgencyStaff")
   balances      CashBalance[]
   movements     CashMovement[]
+  closures      CashClosure[]
   rates         ExchangeRate[]
   transactions  Transaction[]
   quotes        Quote[]
@@ -274,6 +276,47 @@ model CashMovement {
   @@index([agencyId, currencyId, createdAt])
 }
 
+/// Clôture journalière d'une caisse (cahier §3.1).
+///
+/// L'agent compte physiquement ses espèces et saisit ce qu'il a sous la main ;
+/// le système confronte au solde théorique. **L'écart n'est pas masqué** : il
+/// est enregistré ligne à ligne et corrigé par un mouvement d'ajustement, pour
+/// que le solde du lendemain reparte du réel.
+model CashClosure {
+  id       String @id @default(cuid())
+  agencyId String
+  agency   Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  /// Jour comptable clôturé (minuit local). Une seule clôture par agence et par jour.
+  businessDay DateTime @db.Date
+  closedById  String
+  closedBy    User     @relation(fields: [closedById], references: [id])
+  note        String?
+  createdAt   DateTime @default(now())
+
+  lines CashClosureLine[]
+
+  @@unique([agencyId, businessDay])
+  @@index([agencyId, businessDay])
+}
+
+model CashClosureLine {
+  id         String      @id @default(cuid())
+  closureId  String
+  closure    CashClosure @relation(fields: [closureId], references: [id], onDelete: Cascade)
+  currencyId String
+  currency   Currency    @relation(fields: [currencyId], references: [id])
+
+  /// Solde attendu d'après les mouvements, au moment de la clôture.
+  expected Decimal @db.Decimal(18, 2)
+  /// Espèces réellement comptées par l'agent.
+  counted  Decimal @db.Decimal(18, 2)
+  /// counted - expected. Positif = excédent, négatif = manquant.
+  difference Decimal @db.Decimal(18, 2)
+
+  @@unique([closureId, currencyId])
+}
+
 // ---------------------------------------------------------------------------
 // Devises et taux
 // ---------------------------------------------------------------------------
@@ -294,6 +337,7 @@ model Currency {
   rates        ExchangeRate[]
   balances     CashBalance[]
   movements    CashMovement[]
+  closureLines CashClosureLine[]
   sourceTxns   Transaction[]  @relation("SourceCurrency")
   targetTxns   Transaction[]  @relation("TargetCurrency")
   sourceQuotes Quote[]        @relation("QuoteSourceCurrency")

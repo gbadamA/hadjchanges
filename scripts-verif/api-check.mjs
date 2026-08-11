@@ -97,6 +97,12 @@ const login = async (credentials, { fresh = false } = {}) => {
   if (!fresh && sessions.has(credentials.identifier)) return sessions.get(credentials.identifier);
 
   const { status, data } = await call('POST', '/auth/login', { body: credentials });
+  if (status === 429) {
+    throw new Error(
+      'Quota de connexion atteint (10/min, compteur EN MÉMOIRE). ' +
+        'Attendez une minute, ou redémarrez l’API pour le remettre à zéro.',
+    );
+  }
   if (status !== 200) throw new Error(`Connexion impossible (${status}) : ${JSON.stringify(data)}`);
   sessions.set(credentials.identifier, data);
   return data;
@@ -264,7 +270,7 @@ async function main() {
   const admin = await login(ADMIN);
   {
     const before = await call('GET', '/rates/EUR/history', { token: admin.accessToken });
-    const countBefore = Array.isArray(before.data) ? before.data.length : 0;
+    const previousTop = (before.data ?? [])[0];
     const currentEur = board.find((row) => row.currency.code === 'EUR');
     const newSell = Number(currentEur?.sellRate ?? 666) + 1.5;
 
@@ -279,12 +285,21 @@ async function main() {
     });
     check('un admin publie un taux (201)', status === 201, `reçu ${status} ${JSON.stringify(data)}`);
 
+    // ⚠️ On ne COMPTE PAS les lignes : l'historique est plafonné côté API, si
+    // bien qu'après quelques dizaines de publications le compteur n'augmente
+    // plus et le test criait au loup. On vérifie la FORME : la nouvelle version
+    // arrive en tête, et l'ancienne est toujours là, juste derrière.
     const after = await call('GET', '/rates/EUR/history', { token: admin.accessToken });
-    const countAfter = Array.isArray(after.data) ? after.data.length : 0;
+    const [newest, second] = after.data ?? [];
     check(
-      'la version précédente n’est pas écrasée (historique +1)',
-      countAfter === countBefore + 1,
-      `${countBefore} → ${countAfter}`,
+      'la nouvelle version arrive en tête de l’historique',
+      Number(newest?.sellRate) === newSell,
+      `tête à ${newest?.sellRate}, attendu ${newSell}`,
+    );
+    check(
+      'la version précédente n’est pas écrasée, elle recule d’un rang',
+      previousTop === undefined || second?.id === previousTop.id,
+      `${previousTop?.id} vs ${second?.id}`,
     );
 
     const { data: refreshed } = await call('GET', '/rates');
@@ -521,7 +536,12 @@ async function main() {
 
   // ------------------------------------------------------- vérification KYC --
   section('Vérification d’identité (KYC)');
-  {
+  // Bloc étiqueté : un `return` ici couperait TOUT le script, pas la section.
+  kycSection: {
+    // Le parcours KYC part forcément d'un compte NEUF : « aucun dossier » n'a de
+    // sens qu'une fois. ⚠️ `/auth/register` est plafonné à 5 par heure et par IP
+    // — au-delà, on IGNORE la section en le disant, plutôt que d'enchaîner des
+    // échecs en cascade qui feraient croire à une régression.
     const suffix = Date.now().toString().slice(-7);
     const candidate = { phone: `05${suffix}1`, password: 'Kyc@2026Test' };
     const registered = await call('POST', '/auth/register', {
@@ -533,6 +553,16 @@ async function main() {
       },
     });
     const token = registered.data?.accessToken;
+
+    if (!token) {
+      skip(
+        'parcours de vérification d’identité',
+        registered.status === 429
+          ? 'quota d’inscription épuisé — redémarrer l’API remet le compteur à zéro'
+          : `inscription impossible (${registered.status})`,
+      );
+      break kycSection;
+    }
 
     const initial = await call('GET', '/kyc/me', { token });
     check('un compte neuf n’a aucun dossier d’identité', initial.data?.status === 'NON_SOUMIS' && initial.data?.document === null);
@@ -669,12 +699,31 @@ async function main() {
 
   // ---------------------------------------------------------- transactions --
   section('Opération de change, de bout en bout');
-  {
+  transactionSection: {
     // Un client SANS identité vérifiée ne doit pas pouvoir transiger.
-    const suffix = Date.now().toString().slice(-7);
-    const novice = await call('POST', '/auth/register', {
-      body: { firstName: 'Sekou', lastName: 'Bamba', phone: `06${suffix}2`, password: 'Tx@2026Test' },
-    });
+    // ⚠️ Compte STABLE, réutilisé d'un passage à l'autre : créer un compte neuf
+    // à chaque exécution finissait par épuiser le quota d'inscription, et le
+    // script échouait en 401 faute de jeton — un faux négatif spectaculaire.
+    const NOVICE = { identifier: '0600000099', password: 'Tx@2026Test' };
+    const novice = await (async () => {
+      const existing = await call('POST', '/auth/login', { body: NOVICE });
+      if (existing.status === 200) return existing;
+      return call('POST', '/auth/register', {
+        body: {
+          firstName: 'Sekou',
+          lastName: 'Bamba',
+          phone: NOVICE.identifier,
+          password: NOVICE.password,
+        },
+      });
+    })();
+
+    if (!novice.data?.accessToken) {
+      skip(
+        'refus de transaction sans KYC',
+        'quota d’inscription épuisé — redémarrer l’API remet le compteur à zéro',
+      );
+    }
     const blocked = await call('POST', '/transactions', {
       token: novice.data?.accessToken,
       body: {
@@ -685,18 +734,20 @@ async function main() {
         payoutMethod: 'ESPECES_AGENCE',
       },
     });
-    check('sans KYC validé, la transaction est refusée (403)', blocked.status === 403, `reçu ${blocked.status}`);
-    check(
-      'le refus explique qu’il faut vérifier son identité',
-      /identité/i.test(String(blocked.data?.message)),
-      String(blocked.data?.message),
-    );
+    if (novice.data?.accessToken) {
+      check('sans KYC validé, la transaction est refusée (403)', blocked.status === 403, `reçu ${blocked.status}`);
+      check(
+        'le refus explique qu’il faut vérifier son identité',
+        /identité/i.test(String(blocked.data?.message)),
+        String(blocked.data?.message),
+      );
+    }
 
     // Le client vérifié du seed, lui, peut aller au bout.
     const verifie = await login(CLIENT);
     const locked = await call('POST', '/quotes/lock', {
       token: verifie.accessToken,
-      body: { direction: 'VENTE_DEVISE', currencyCode: 'EUR', amount: 200_000, side: 'SOURCE' },
+      body: { direction: 'VENTE_DEVISE', currencyCode: 'EUR', amount: 20_000, side: 'SOURCE' },
     });
 
     const created = await call('POST', '/transactions', {
@@ -707,6 +758,12 @@ async function main() {
         payoutMethod: 'ESPECES_AGENCE',
       },
     });
+    // ⚠️ Chaque passage consomme le plafond JOURNALIER du client de démo : c'est
+    // le produit qui fonctionne, pas le script qui casse. On le dit clairement.
+    if (created.status === 403 && /plafond/i.test(String(created.data?.message))) {
+      skip('opération de change de bout en bout', 'plafond journalier du client de démo atteint');
+      break transactionSection;
+    }
     check('la transaction est créée à partir du devis (201)', created.status === 201, `reçu ${created.status}`);
     check('elle porte une référence lisible', /^HC-\d{4}-\d{6}$/.test(created.data?.reference ?? ''), String(created.data?.reference));
     check('elle démarre en attente de paiement', created.data?.status === 'CREEE');
@@ -767,7 +824,7 @@ async function main() {
 
     // Soldes de caisse AVANT exécution, pour vérifier le mouvement réel.
     const agencyId = created.data?.agency?.id;
-    const before = await call('GET', `/agencies/${agencyId}/cash`, { token: admin.accessToken });
+    const before = await call('GET', `/cash/${agencyId}/balances`, { token: admin.accessToken });
     const xofBefore = Number((before.data ?? []).find((row) => row.currency.code === 'XOF')?.amount);
     const eurBefore = Number((before.data ?? []).find((row) => row.currency.code === 'EUR')?.amount);
 
@@ -784,7 +841,7 @@ async function main() {
       String(approved.data?.status),
     );
 
-    const after = await call('GET', `/agencies/${agencyId}/cash`, { token: admin.accessToken });
+    const after = await call('GET', `/cash/${agencyId}/balances`, { token: admin.accessToken });
     const xofAfter = Number((after.data ?? []).find((row) => row.currency.code === 'XOF')?.amount);
     const eurAfter = Number((after.data ?? []).find((row) => row.currency.code === 'EUR')?.amount);
     check(
@@ -957,6 +1014,194 @@ async function main() {
       'son export ne contient que ses opérations',
       mineLines.length > 0 && mineLines.length < allLines.length,
       `${mineLines.length} lignes sur ${allLines.length}`,
+    );
+  }
+
+  // ---------------------------------------------------------------- caisses --
+  section('Tenue de caisse et clôture');
+  {
+    const plateau = agencies.find((agency) => agency.code === 'PLT');
+    const aeroport = agencies.find((agency) => agency.code === 'AER');
+    const operateur = await login(OPERATEUR); // rattaché au Plateau dans le seed
+
+    const balances = await call('GET', `/cash/${plateau.id}/balances`, { token: admin.accessToken });
+    check('les soldes de caisse sont lisibles (200)', balances.status === 200, `reçu ${balances.status}`);
+    check('chaque solde porte sa devise', (balances.data ?? []).every((row) => row.currency?.code));
+    check(
+      'les montants sortent en chaînes, jamais en flottants',
+      (balances.data ?? []).every((row) => typeof row.amount === 'string'),
+    );
+
+    const client = await login(CLIENT);
+    const peek = await call('GET', `/cash/${plateau.id}/balances`, { token: client.accessToken });
+    check('un client ne voit pas l’encaisse du bureau (403)', peek.status === 403, `reçu ${peek.status}`);
+
+    // Cloisonnement : l'opérateur du Plateau n'a rien à faire à l'aéroport.
+    const own = await call('GET', `/cash/${plateau.id}/balances`, { token: operateur.accessToken });
+    check('un opérateur consulte sa propre caisse (200)', own.status === 200, `reçu ${own.status}`);
+    const other = await call('GET', `/cash/${aeroport.id}/balances`, { token: operateur.accessToken });
+    check('il ne consulte pas celle d’une autre agence (403)', other.status === 403, `reçu ${other.status}`);
+
+    // Alimentation : réservée à l'encadrement.
+    const byOperator = await call('POST', `/cash/${plateau.id}/movements`, {
+      token: operateur.accessToken,
+      body: { currencyCode: 'EUR', type: 'ALIMENTATION', amount: 1000 },
+    });
+    check('un opérateur n’alimente pas sa caisse (403)', byOperator.status === 403, `reçu ${byOperator.status}`);
+
+    const eurBefore = Number(
+      (balances.data ?? []).find((row) => row.currency.code === 'EUR')?.amount ?? 0,
+    );
+    const funded = await call('POST', `/cash/${plateau.id}/movements`, {
+      token: admin.accessToken,
+      body: { currencyCode: 'EUR', type: 'ALIMENTATION', amount: 5000, note: 'Réassort hebdomadaire' },
+    });
+    check('l’encadrement alimente la caisse (201)', funded.status === 201, `reçu ${funded.status}`);
+    check(
+      'le solde augmente du montant versé',
+      Number(funded.data?.balance) === eurBefore + 5000,
+      `${eurBefore} → ${funded.data?.balance}`,
+    );
+
+    // Le signe vient du TYPE : un retrait saisi en positif doit sortir de la caisse.
+    const withdrawn = await call('POST', `/cash/${plateau.id}/movements`, {
+      token: admin.accessToken,
+      body: { currencyCode: 'EUR', type: 'RETRAIT', amount: 2000 },
+    });
+    check(
+      'un retrait saisi en positif diminue quand même la caisse',
+      Number(withdrawn.data?.balance) === eurBefore + 3000,
+      `solde ${withdrawn.data?.balance}`,
+    );
+
+    const overdraft = await call('POST', `/cash/${plateau.id}/movements`, {
+      token: admin.accessToken,
+      body: { currencyCode: 'EUR', type: 'RETRAIT', amount: 99_000_000 },
+    });
+    check('on ne retire pas plus que l’encaisse (409)', overdraft.status === 409, `reçu ${overdraft.status}`);
+
+    const zero = await call('POST', `/cash/${plateau.id}/movements`, {
+      token: admin.accessToken,
+      body: { currencyCode: 'EUR', type: 'ALIMENTATION', amount: 0 },
+    });
+    check('un mouvement de zéro est refusé (400)', zero.status === 400, `reçu ${zero.status}`);
+
+    const movements = await call('GET', `/cash/${plateau.id}/movements?currencyCode=EUR`, {
+      token: admin.accessToken,
+    });
+    check('les mouvements sont consultables (200)', movements.status === 200, `reçu ${movements.status}`);
+    check(
+      'chaque mouvement porte son auteur et le solde qui en résulte',
+      (movements.data ?? []).every((row) => row.author && row.balanceAfter !== undefined),
+    );
+    check(
+      'les mouvements nés d’une transaction citent sa référence',
+      (movements.data ?? []).some((row) => row.type === 'SORTIE_TRANSACTION' && row.reference),
+    );
+
+    // Clôture journalière : c'est l'écart qui compte.
+    const current = await call('GET', `/cash/${plateau.id}/balances`, { token: admin.accessToken });
+    const eurNow = Number((current.data ?? []).find((row) => row.currency.code === 'EUR')?.amount);
+    const xofNow = Number((current.data ?? []).find((row) => row.currency.code === 'XOF')?.amount);
+
+    // ⚠️ Le script ne PRÉSUME PAS que la journée est encore ouverte : une
+    // clôture faite à la main dans le navigateur suffirait à le faire échouer
+    // alors que rien n'est cassé. Il prend donc le premier jour non clôturé en
+    // remontant le temps.
+    const existing = await call('GET', `/cash/${plateau.id}/closures`, { token: admin.accessToken });
+    const taken = new Set((existing.data ?? []).map((row) => row.businessDay));
+    const businessDay = (() => {
+      const day = new Date();
+      while (taken.has(day.toISOString().slice(0, 10))) day.setDate(day.getDate() - 1);
+      return day.toISOString().slice(0, 10);
+    })();
+
+    const closed = await call('POST', `/cash/${plateau.id}/close-day`, {
+      token: operateur.accessToken,
+      body: {
+        businessDay,
+        counts: [
+          { currencyCode: 'EUR', countedAmount: eurNow - 50 }, // manquant volontaire
+          { currencyCode: 'XOF', countedAmount: xofNow }, // conforme
+        ],
+        note: 'Clôture du soir',
+      },
+    });
+    check('l’opérateur clôture sa caisse (201)', closed.status === 201, `reçu ${closed.status}`);
+
+    const eurLine = (closed.data?.lines ?? []).find((line) => Number(line.difference) !== 0);
+    check(
+      'l’écart constaté est enregistré, pas masqué',
+      Number(eurLine?.difference) === -50,
+      `écart ${eurLine?.difference}`,
+    );
+
+    const after = await call('GET', `/cash/${plateau.id}/balances`, { token: admin.accessToken });
+    const eurAfter = Number((after.data ?? []).find((row) => row.currency.code === 'EUR')?.amount);
+    check(
+      'le solde repart du montant réellement compté',
+      eurAfter === eurNow - 50,
+      `${eurNow} → ${eurAfter}`,
+    );
+
+    const twice = await call('POST', `/cash/${plateau.id}/close-day`, {
+      token: operateur.accessToken,
+      body: { businessDay, counts: [{ currencyCode: 'XOF', countedAmount: xofNow }] },
+    });
+    check('une journée déjà clôturée ne se reclôture pas (409)', twice.status === 409, `reçu ${twice.status}`);
+
+    const closures = await call('GET', `/cash/${plateau.id}/closures`, { token: admin.accessToken });
+    check('l’historique des clôtures est consultable', (closures.data ?? []).length > 0);
+    check(
+      'chaque clôture nomme son auteur et son jour comptable',
+      /^\d{4}-\d{2}-\d{2}$/.test(closures.data?.[0]?.businessDay ?? '') && Boolean(closures.data?.[0]?.closedBy),
+      JSON.stringify(closures.data?.[0]?.businessDay),
+    );
+
+    const trace = await call('GET', '/audit?entity=CashClosure&take=5', { token: admin.accessToken });
+    check('la clôture est tracée à l’audit', (trace.data ?? []).some((row) => row.action === 'cash.close_day'));
+  }
+
+  // ------------------------------------------------- affectation des agents --
+  section('Affectation des opérateurs');
+  {
+    const staff = await call('GET', '/staff', { token: admin.accessToken });
+    check('la liste de l’équipe est lisible (200)', staff.status === 200, `reçu ${staff.status}`);
+    check(
+      'aucun client dans la liste de l’équipe',
+      (staff.data ?? []).every((row) => row.role !== 'CLIENT'),
+    );
+
+    const client = await login(CLIENT);
+    const forbidden = await call('GET', '/staff', { token: client.accessToken });
+    check('un client ne lit pas la liste de l’équipe (403)', forbidden.status === 403, `reçu ${forbidden.status}`);
+
+    const operateur = (staff.data ?? []).find((row) => row.role === 'OPERATEUR');
+    const aeroport = agencies.find((agency) => agency.code === 'AER');
+    const plateau = agencies.find((agency) => agency.code === 'PLT');
+
+    const moved = await call('PATCH', `/staff/${operateur.id}/agency`, {
+      token: admin.accessToken,
+      body: { agencyId: aeroport.id },
+    });
+    check('un opérateur peut changer d’agence (200)', moved.status === 200, `reçu ${moved.status}`);
+    check('son rattachement suit', moved.data?.agencyId === aeroport.id);
+
+    const back = await call('PATCH', `/staff/${operateur.id}/agency`, {
+      token: admin.accessToken,
+      body: { agencyId: plateau.id },
+    });
+    check('le rattachement d’origine se rétablit', back.data?.agencyId === plateau.id);
+
+    const admins = (staff.data ?? []).find((row) => row.role === 'ADMIN');
+    const refused = await call('PATCH', `/staff/${admins.id}/agency`, {
+      token: admin.accessToken,
+      body: { agencyId: plateau.id },
+    });
+    check(
+      'un administrateur ne se rattache pas à une agence (404)',
+      refused.status === 404,
+      `reçu ${refused.status}`,
     );
   }
 

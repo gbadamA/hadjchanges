@@ -234,6 +234,78 @@ export const STATUS_CLASS: Record<TransactionStatus, string> = {
   ANNULEE: 'bg-status-annulee/15 text-status-annulee',
 };
 
+export interface Agency {
+  id: string;
+  code: string;
+  name: string;
+  city: string;
+}
+
+export interface CashBalance {
+  currency: { code: string; symbol: string; decimals: number };
+  amount: string;
+  updatedAt: string;
+}
+
+export interface CashMovement {
+  id: string;
+  type: string;
+  currency: { code: string; decimals: number };
+  amount: string;
+  balanceAfter: string;
+  note: string | null;
+  reference: string | null;
+  author: string;
+  createdAt: string;
+}
+
+export interface CashClosure {
+  id: string;
+  businessDay: string;
+  closedBy: string;
+  note: string | null;
+  lines: Array<{
+    currency: { code: string; decimals: number };
+    expected: string;
+    counted: string;
+    difference: string;
+  }>;
+}
+
+export const MOVEMENT_LABEL: Record<string, string> = {
+  ALIMENTATION: 'Alimentation',
+  RETRAIT: 'Retrait',
+  ENTREE_TRANSACTION: 'Encaissement',
+  SORTIE_TRANSACTION: 'Décaissement',
+  AJUSTEMENT: 'Ajustement',
+  CLOTURE_JOURNALIERE: 'Clôture',
+};
+
+export const cash = {
+  agencies: () => apiFetch<Agency[]>('/agencies'),
+  balances: (agencyId: string, token: string) =>
+    apiFetch<CashBalance[]>(`/cash/${agencyId}/balances`, { token }),
+  movements: (agencyId: string, token: string) =>
+    apiFetch<CashMovement[]>(`/cash/${agencyId}/movements`, { token }),
+  closures: (agencyId: string, token: string) =>
+    apiFetch<CashClosure[]>(`/cash/${agencyId}/closures`, { token }),
+  move: (
+    agencyId: string,
+    body: { currencyCode: string; type: string; amount: number; note?: string },
+    token: string,
+  ) => apiFetch<{ balance: string }>(`/cash/${agencyId}/movements`, { method: 'POST', body, token }),
+  closeDay: (
+    agencyId: string,
+    counts: Array<{ currencyCode: string; countedAmount: number }>,
+    token: string,
+  ) =>
+    apiFetch<{ closureId: string }>(`/cash/${agencyId}/close-day`, {
+      method: 'POST',
+      body: { counts },
+      token,
+    }),
+};
+
 export const kyc = {
   queue: (status: KycStatus, token: string) =>
     apiFetch<KycDocumentRow[]>(`/kyc/queue?status=${status}`, { token }),

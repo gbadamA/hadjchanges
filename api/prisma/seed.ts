@@ -73,7 +73,22 @@ async function main(): Promise<void> {
 
   const clients = [
     // Un client vérifié : il peut transiger.
-    { phone: '0709000001', email: 'client.valide@example.ci', firstName: 'Moussa', lastName: 'Bamba', kycStatus: KycStatus.VALIDE, kycValidatedAt: new Date() },
+    // ⚠️ Plafonds volontairement larges POUR CE COMPTE DE DÉMONSTRATION : chaque
+    // passage du script de vérification exécute un change réel et consomme le
+    // plafond journalier. Avec la valeur par défaut (2 000 000 XOF), la suite
+    // devenait interrompue après quelques exécutions dans la même journée — un
+    // faux négatif qui ressemblait à une régression. Les autres comptes gardent
+    // les plafonds normaux, et le contrôle « plafond dépassé » reste valable.
+    {
+      phone: '0709000001',
+      email: 'client.valide@example.ci',
+      firstName: 'Moussa',
+      lastName: 'Bamba',
+      kycStatus: KycStatus.VALIDE,
+      kycValidatedAt: new Date(),
+      dailyLimitXof: new Prisma.Decimal(50_000_000),
+      monthlyLimitXof: new Prisma.Decimal(500_000_000),
+    },
     // Un client en attente : il consulte et simule, rien de plus.
     { phone: '0709000002', email: 'client.attente@example.ci', firstName: 'Adjoua', lastName: 'N’Guessan', kycStatus: KycStatus.EN_ATTENTE, kycValidatedAt: null },
     // Un client rejeté : il doit redéposer sa pièce.
@@ -82,7 +97,14 @@ async function main(): Promise<void> {
   for (const client of clients) {
     await prisma.user.upsert({
       where: { phone: client.phone },
-      update: { kycStatus: client.kycStatus },
+      // Les plafonds sont repoussés aussi à la MISE À JOUR : sans ça, un compte
+      // déjà semé garderait les valeurs par défaut et le seed n'aurait aucun
+      // effet sur une base existante.
+      update: {
+        kycStatus: client.kycStatus,
+        dailyLimitXof: 'dailyLimitXof' in client ? client.dailyLimitXof : null,
+        monthlyLimitXof: 'monthlyLimitXof' in client ? client.monthlyLimitXof : null,
+      },
       create: {
         ...client,
         role: Role.CLIENT,

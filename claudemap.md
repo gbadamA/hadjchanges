@@ -85,13 +85,13 @@ hadjchanges/
 │       ├── storage/       🟢 port fichiers — clés opaques, JAMAIS servi en statique
 │       ├── notifications/ 🟢 canal interne (Push/WhatsApp/SMS en brique 9)
 │       ├── transactions/  🟢 machine à états + reçus + `exchange-executor.ts` (l'argent bouge ici)
-│       ├── cash/          🟢 mouvements + soldes (cache recalculable)
+│       ├── cash/          🟢 mouvements, soldes (cache recalculable), clôture journalière
 │       ├── compliance/    ⚪ seuils LCB-FT, alertes
 │       ├── documents/     🟢 justificatif PDF (PDFKit) + exports xlsx/CSV
 │       └── reporting/     ⚪ volumes, commissions, graphiques
 │
 ├── scripts-verif/
-│   └── api-check.mjs      ✅ vérification exécutable de bout en bout (148 contrôles)
+│   └── api-check.mjs      ✅ vérification exécutable de bout en bout (178 contrôles)
 │
 ├── admin/                 Next.js 15 (App Router)
 │   └── src/
@@ -101,8 +101,8 @@ hadjchanges/
 │       ├── lib/navigation.ts 🧭 matrice du menu — MÊME matrice que les @Roles de l'API
 │       └── app/
 │           ├── login         🟢 connexion équipe
-│           └── (dash)/       🟢 kyc, recus, transactions · ⚪ taux, clients,
-│                             agences, caisses, rapports, equipe, audit
+│           └── (dash)/       🟢 kyc, recus, transactions, caisses · ⚪ taux, clients,
+│                             agences, rapports, equipe, audit
 │
 └── mobile/                📱 React Expo 57
     ├── app.json           ⚙️ Config Expo (safe-area, back gesture off)
@@ -222,7 +222,7 @@ n'y a qu'un parcours, une pile suffit — une barre à un seul onglet ne sert pe
 | Transactions | `/(dash)/transactions` | liste temps réel, filtres, détail, export |
 | Clients | `/(dash)/clients` | fiche, plafonds, blocage, historique |
 | Agences | `/(dash)/agences` | agences + affectation des opérateurs |
-| Caisses | `/(dash)/caisses` | soldes par devise, mouvements, clôture journalière |
+| Caisses 🟢 | `/(dash)/caisses` | soldes par devise, mouvementer, **clôture par comptage** avec écart en direct |
 | Rapports | `/(dash)/rapports` | graphiques SVG maison, exports Excel/PDF |
 | Équipe | `/(dash)/equipe` | comptes internes et rôles [super_admin] |
 | Audit | `/(dash)/audit` | journal d'activité |
@@ -257,7 +257,8 @@ Un opérateur ne modifie **jamais** un taux ni un plafond, et ne voit que son ag
                       → vérifié : api-check.mjs 131/131 + boucle complète dans le navigateur
 [🟢] 5. Suivi         historique filtrable + justificatif PDF + exports Excel/CSV
                       → vérifié : api-check.mjs 148/148 + téléchargements constatés dans les 2 fronts
-[⚪] 6. Caisses       agences + soldes par devise + mouvements + clôture
+[🟢] 6. Caisses       soldes + mouvements + clôture journalière + affectation des agents
+                      → vérifié : api-check.mjs 178/178 + clôture avec écart dans le navigateur
 [⚪] 7. Reporting     volumes, commissions, graphiques SVG, exports
 [⚪] 8. Conformité    seuils LCB-FT + plafonds + journal d'audit
 [⚪] 9. Notifications Expo Push + WhatsApp/SMS + alertes de taux favorable

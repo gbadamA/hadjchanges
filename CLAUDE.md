@@ -110,6 +110,16 @@ Les transitions invalides sont refusées **côté service** par une state machin
 
 ## 6. Décisions actées
 
+- ✅ **La clôture journalière est un COMPTAGE, pas une saisie d'écart.** L'agent déclare ce qu'il a
+  physiquement devant lui ; c'est le système qui calcule la différence. Lui demander l'écart
+  reviendrait à lui demander de se juger lui-même.
+- ✅ **Un écart de caisse n'est jamais masqué** : il est enregistré ligne à ligne dans `CashClosure`,
+  puis corrigé par un mouvement d'ajustement pour que le lendemain reparte du réel. Une caisse
+  qu'on « recale » en silence, c'est un vol qu'on ne voit jamais.
+- ✅ **Alimenter et retirer sont réservés à l'encadrement.** Un opérateur qui pourrait créditer sa
+  propre caisse rendrait la clôture inutile. Il clôture, il ne s'approvisionne pas.
+- ✅ **Le signe d'un mouvement vient de son TYPE**, jamais du montant saisi : une alimentation
+  entrée en négatif viderait la caisse au lieu de la remplir. Seul l'ajustement garde le signe.
 - ✅ **Le justificatif est produit à la CLÔTURE, puis conservé.** Il doit rester identique s'il est
   retéléchargé six mois plus tard, même si les taux, la commission ou la raison sociale ont changé.
   Le régénérer à la demande donnerait un document qui bouge — inacceptable pour une pièce
@@ -228,7 +238,7 @@ les deux surfaces doivent se reconnaître au premier coup d'œil. Police Plus Ja
 | 3 | **KYC** | dépôt CNI/selfie, file de validation dashboard, notification, 1res pages du dashboard | 🟢 |
 | 4 | **Transaction** | création + verrou de taux + import de reçu + file de validation + exécution du change | ⚪ |
 | 5 | **Suivi** | historique filtrable, justificatif PDF, exports Excel/CSV | 🟢 |
-| 6 | **Caisses** | agences, soldes par devise, mouvements, clôture journalière | ⚪ |
+| 6 | **Caisses** | soldes par devise, mouvements, clôture journalière, affectation des agents | 🟢 |
 | 7 | **Reporting** | volumes, commissions, graphiques SVG, export Excel/PDF | ⚪ |
 | 8 | **Conformité** | seuils LCB-FT, alertes, plafonds client, journal d'audit consultable | ⚪ |
 | 9 | **Notifications** | Expo Push + WhatsApp/SMS + alertes de taux favorable | ⚪ |
@@ -292,6 +302,18 @@ d'où la comparaison par code de caractère.
 ⚠️ **`content-disposition` doit être dans `exposedHeaders` de la configuration CORS.** Sans lui, le
 navigateur cache l'en-tête aux requêtes inter-origines et le dashboard enregistrait les exports
 sous un nom générique au lieu du nom daté envoyé par le serveur.
+
+⚠️ **`api-check.mjs` ne doit RIEN présumer de l'état de la base.** Trois faux négatifs déjà payés :
+la clôture du jour faite à la main dans le navigateur (le script choisit désormais le premier jour
+non clôturé), l'historique des taux plafonné côté API (il vérifie la FORME — nouvelle version en
+tête, précédente juste derrière — au lieu de compter les lignes), et les **quotas du produit**
+(inscription 5/h, plafond journalier du client) qu'il consomme lui-même : il les détecte et
+**ignore la section en le disant** plutôt que d'enchaîner des échecs qui ressemblent à une
+régression.
+
+⚠️ **Le compte client de démonstration a des plafonds volontairement larges** (50 M/jour) : chaque
+passage du script exécute un vrai change et consomme le plafond. Les autres comptes gardent les
+valeurs normales, et le contrôle « plafond dépassé » reste valable.
 
 ⚠️ **`api-check.mjs` met ses sessions en cache.** `/auth/login` est limité à 10 par minute : sans
 ce cache, le script déclenchait sa propre limite et échouait en 429 sur des vérifications saines.
