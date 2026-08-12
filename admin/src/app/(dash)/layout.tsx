@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, type ReactNode } from 'react';
+import { SidebarNav } from '../../components/sidebar-nav';
 import { useAuth } from '../../lib/auth';
 import { NAVIGATION, navigationFor, ROLE_LABEL } from '../../lib/navigation';
 
@@ -41,37 +42,10 @@ export default function DashLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen">
-      <aside className="hidden w-64 shrink-0 flex-col justify-between bg-diplomatic-deep p-6 text-white lg:flex">
-        <div className="space-y-8">
+      <aside className="hidden w-64 shrink-0 flex-col justify-between gap-6 overflow-y-auto bg-diplomatic-deep p-6 text-white lg:flex">
+        <div className="space-y-6">
           <span className="font-display text-xl">HadjChanges</span>
-          <nav className="space-y-1">
-            {items.map((item) =>
-              item.ready ? (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`block rounded-sm px-3 py-2 text-body transition ${
-                    pathname.startsWith(item.href)
-                      ? 'bg-white/15 font-medium'
-                      : 'text-white/70 hover:bg-white/10'
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              ) : (
-                <span
-                  key={item.href}
-                  className="flex items-center justify-between rounded-sm px-3 py-2 text-body text-white/35"
-                  title="Module à venir"
-                >
-                  {item.label}
-                  <span className="text-[10px] uppercase tracking-wider text-secondary/70">
-                    à venir
-                  </span>
-                </span>
-              ),
-            )}
-          </nav>
+          <SidebarNav role={user.role} pathname={pathname} />
         </div>
 
         <div className="space-y-2 border-t border-white/10 pt-4">

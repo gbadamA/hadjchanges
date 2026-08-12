@@ -99,8 +99,9 @@ hadjchanges/
 │       ├── lib/tokens.ts     🎨 SOURCE DE VÉRITÉ visuelle (miroir du tailwind.config)
 │       ├── lib/api.ts        🔌 client API — 1 SEUL point d'accès réseau
 │       ├── lib/auth.tsx      🔐 session équipe (access token EN MÉMOIRE)
-│       ├── lib/navigation.ts 🧭 matrice du menu — MÊME matrice que les @Roles de l'API
+│       ├── lib/navigation.ts 🧭 GROUPES du menu + icônes — MÊME matrice que les @Roles
 │       ├── components/charts.tsx 📈 AreaChart · BarList · Donut — SVG maison, animés une fois
+│       ├── components/sidebar-nav.tsx 🧭 menu à icônes, groupes dépliants mémorisés
 │       └── app/
 │           ├── login         🟢 connexion équipe
 │           └── (dash)/       🟢 les 12 modules : guichet, kyc, recus, transactions, taux,

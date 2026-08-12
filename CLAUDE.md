@@ -245,6 +245,30 @@ Côté mobile : `shadow.card` / `shadow.float` / `shadow.navy` / `shadow.gold`, 
 cliquable s'enfonce** (`PressableCard`, scale 0.97). Une carte qui mène quelque part sans réagir
 au doigt se fait taper deux fois.
 
+### Navigation du dashboard : icônes + groupes dépliants
+
+Treize modules à plat font une liste qu'on relit à chaque fois. Ils sont donc **groupés par moment
+de la journée** — Au comptoir, Suivi, Marché et réseau, Pilotage, Administration — chaque entrée
+précédée d'une **icône** (`lucide-react`, 18 px) choisie pour être reconnaissable **sans lire le
+libellé**.
+
+Trois règles qui rendent le repli supportable, toutes dans `components/sidebar-nav.tsx` :
+1. **Le groupe de la page ouverte est toujours déplié**, même s'il a été replié avant — sinon on ne
+   sait plus où l'on est, ce qui est l'inverse du but d'un menu.
+2. **L'état est mémorisé** (`localStorage`) : replier « Pilotage » le matin doit tenir toute la journée.
+3. **Un groupe vidé par les droits disparaît** — pas d'intitulé qui s'ouvre sur rien. Un opérateur
+   voit 4 groupes et 6 entrées, un super-administrateur 5 et 13.
+
+La page ouverte est marquée par un **filet doré** à gauche : c'est le seul or du menu, il ne se
+confond avec rien.
+
+⚠️ **Vérifier une animation dans un navigateur piloté dont le panneau est masqué est un piège.**
+`document.visibilityState === 'hidden'` ⇒ la page ne composite pas ⇒ **les transitions n'avancent
+jamais** et les hauteurs semblent figées. J'en ai conclu à tort qu'un `grid-template-rows: 1fr→0fr`
+n'était pas interpolable, et changé de technique pour rien. La bonne méthode : mesurer l'**état
+final** en neutralisant les transitions (`* { transition: none !important }`), et prouver
+l'animation à part via `getAnimations()`.
+
 ### Dashboard — DA « bleu diplomatique & or », reprise de FI-HADJ
 
 Le client a demandé cette filiation visuelle. On reprend la **même grammaire** que
