@@ -48,7 +48,7 @@ caisse tenue, tout tracé.
 | Brique | Dossier | Port | Statut | Rôle |
 |--------|---------|------|--------|------|
 | API | `api/` | 3061 | 🟢 auth, taux, simulation, KYC, **transactions + reçus + caisse**, audit | Cœur métier : taux, KYC, transactions, caisses, audit |
-| Dashboard | `admin/` | 3060 | 🟠 identités, reçus, transactions, caisses, **rapports** | Admin / opérateur : validation, pilotage, reporting |
+| Dashboard | `admin/` | 3060 | 🟢 12 modules, dont le **guichet** (client au comptoir) | Admin / opérateur : guichet, validation, pilotage, reporting |
 | Mobile | `mobile/` | Expo Go | 🟢 taux, simulateur, KYC, **opération complète + suivi** | Client final : taux, simulateur, transaction, suivi |
 
 ---
@@ -92,7 +92,7 @@ hadjchanges/
 │       └── reporting/     🟢 volumes, commissions, séries et répartitions + export comptable
 │
 ├── scripts-verif/
-│   └── api-check.mjs      ✅ vérification exécutable de bout en bout (277 contrôles)
+│   └── api-check.mjs      ✅ vérification exécutable de bout en bout (293 contrôles)
 │
 ├── admin/                 Next.js 15 (App Router)
 │   └── src/
@@ -103,8 +103,9 @@ hadjchanges/
 │       ├── components/charts.tsx 📈 AreaChart · BarList · Donut — SVG maison, animés une fois
 │       └── app/
 │           ├── login         🟢 connexion équipe
-│           └── (dash)/       🟢 les 11 modules : kyc, recus, transactions, taux, clients,
-│                             caisses, agences, rapports, equipe, conformite, audit, reglages
+│           └── (dash)/       🟢 les 12 modules : guichet, kyc, recus, transactions, taux,
+│                             clients, caisses, agences, rapports, equipe, conformite,
+│                             audit, reglages
 │
 └── mobile/                📱 React Expo 57
     ├── app.json           ⚙️ Config Expo (safe-area, back gesture off)
