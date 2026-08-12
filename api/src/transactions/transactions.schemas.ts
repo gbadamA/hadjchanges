@@ -20,6 +20,18 @@ export const createTransactionSchema = z
     payoutMethod: z.nativeEnum(PayoutMethod),
     /** Numéro mobile money ou RIB de versement, selon le mode de retrait. */
     payoutDetails: z.string().trim().max(120).optional(),
+    /**
+     * Qui reçoit les fonds, si ce n'est pas le client. Absent = lui-même.
+     * Le lien déclaré n'est pas décoratif : c'est ce que l'agent vérifiera
+     * si la vigilance LCB-FT se déclenche.
+     */
+    beneficiary: z
+      .object({
+        name: z.string().trim().min(2).max(80),
+        phone: z.string().trim().max(20).optional(),
+        relation: z.string().trim().max(60).optional(),
+      })
+      .optional(),
   })
   .refine(
     (value) => Boolean(value.quoteId) || Boolean(value.direction && value.currencyCode && value.amount),

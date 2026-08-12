@@ -32,7 +32,7 @@ export class ExchangeExecutor {
   async execute(transactionId: string, operator: AuthUser, ip?: string): Promise<TransactionView> {
     const transaction = await this.prisma.transaction.findUnique({ where: { id: transactionId } });
     if (!transaction) throw new NotFoundException('Transaction introuvable.');
-    this.machine.assert(transaction.status, TransactionStatus.CHANGE_EXECUTE);
+    this.machine.assert(transaction.status, TransactionStatus.CHANGE_EXECUTE, transaction.channel);
 
     if (!transaction.agencyId) {
       throw new NotFoundException('Aucune agence rattachée : impossible de mouvementer une caisse.');

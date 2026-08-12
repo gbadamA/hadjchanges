@@ -28,6 +28,8 @@ export interface TransactionView {
   status: TransactionStatus;
   statusLabel: string;
   direction: string;
+  channel: string;
+  beneficiary: { name: string; phone: string | null; relation: string | null } | null;
   sourceCurrency: string;
   targetCurrency: string;
   sourceAmount: string;
@@ -91,6 +93,14 @@ export function toTransactionView(
     status: transaction.status,
     statusLabel: LABELS[transaction.status],
     direction: transaction.direction,
+    channel: transaction.channel,
+    beneficiary: transaction.beneficiaryName
+      ? {
+          name: transaction.beneficiaryName,
+          phone: transaction.beneficiaryPhone,
+          relation: transaction.beneficiaryRelation,
+        }
+      : null,
     sourceCurrency: transaction.sourceCurrency.code,
     targetCurrency: transaction.targetCurrency.code,
     sourceAmount: transaction.sourceAmount.toString(),

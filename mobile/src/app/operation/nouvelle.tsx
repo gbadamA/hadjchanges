@@ -38,6 +38,10 @@ export default function NouvelleOperation(): ReactNode {
   const [payout, setPayout] = useState<PayoutMethod>('ESPECES_AGENCE');
   const [agencyId, setAgencyId] = useState<string | null>(null);
   const [payoutDetails, setPayoutDetails] = useState('');
+  const [forSomeoneElse, setForSomeoneElse] = useState(false);
+  const [beneficiaryName, setBeneficiaryName] = useState('');
+  const [beneficiaryPhone, setBeneficiaryPhone] = useState('');
+  const [beneficiaryRelation, setBeneficiaryRelation] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -70,6 +74,13 @@ export default function NouvelleOperation(): ReactNode {
           payoutMethod: payout,
           agencyId: payout === 'ESPECES_AGENCE' ? agencyId : null,
           payoutDetails: payout === 'ESPECES_AGENCE' ? undefined : payoutDetails.trim() || undefined,
+          beneficiary: forSomeoneElse
+            ? {
+                name: beneficiaryName.trim(),
+                phone: beneficiaryPhone.trim() || undefined,
+                relation: beneficiaryRelation.trim() || undefined,
+              }
+            : undefined,
         },
         accessToken,
       );
@@ -191,6 +202,42 @@ export default function NouvelleOperation(): ReactNode {
         />
       )}
 
+      {/* « Qui bénéficie » : demandé au moment où le client choisit son retrait,
+          pas dans un écran séparé qu'il ne rouvrira jamais. */}
+      <View style={styles.block}>
+        <Pressable onPress={() => setForSomeoneElse(!forSomeoneElse)} style={styles.toggle}>
+          <Ionicons
+            name={forSomeoneElse ? 'checkbox' : 'square-outline'}
+            size={22}
+            color={forSomeoneElse ? C.navy : C.textMute}
+          />
+          <Text style={[T.label, styles.toggleText]}>Les fonds sont pour quelqu’un d’autre</Text>
+        </Pressable>
+
+        {forSomeoneElse ? (
+          <>
+            <Field
+              label="Nom du bénéficiaire"
+              value={beneficiaryName}
+              onChangeText={setBeneficiaryName}
+              autoCapitalize="words"
+            />
+            <Field
+              label="Son téléphone (facultatif)"
+              value={beneficiaryPhone}
+              onChangeText={setBeneficiaryPhone}
+              keyboardType="phone-pad"
+            />
+            <Field
+              label="Votre lien avec lui (facultatif)"
+              value={beneficiaryRelation}
+              onChangeText={setBeneficiaryRelation}
+              placeholder="frère, employeur…"
+            />
+          </>
+        ) : null}
+      </View>
+
       <Button
         label={busy ? 'Création…' : 'Confirmer l’opération'}
         onPress={() => void confirm()}
@@ -198,7 +245,8 @@ export default function NouvelleOperation(): ReactNode {
         disabled={
           busy ||
           !quote ||
-          (payout === 'ESPECES_AGENCE' ? !agencyId : payoutDetails.trim().length < 6)
+          (payout === 'ESPECES_AGENCE' ? !agencyId : payoutDetails.trim().length < 6) ||
+          (forSomeoneElse && beneficiaryName.trim().length < 2)
         }
       />
       <Text style={T.caption}>
@@ -239,4 +287,6 @@ const styles = StyleSheet.create({
   },
   agencyActive: { borderColor: C.navy, backgroundColor: C.navySoft },
   agencyText: { flex: 1, gap: 2 },
+  toggle: { flexDirection: 'row', alignItems: 'center', gap: S.sm },
+  toggleText: { flex: 1 },
 });

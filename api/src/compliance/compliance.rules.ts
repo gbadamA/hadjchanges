@@ -89,6 +89,25 @@ export const RULES: ComplianceRule[] = [
         : null,
   },
   {
+    /**
+     * Fonds remis à quelqu'un d'autre que le client.
+     *
+     * Ce n'est pas suspect en soi — on envoie de l'argent à sa famille tous les
+     * jours. Ça le devient quand le montant est significatif : c'est le montage
+     * le plus banal pour faire circuler de l'argent sous le nom d'un tiers.
+     */
+    code: 'BENEFICIAIRE_TIERS',
+    evaluate: ({ transaction, thresholdXof }) =>
+      transaction.beneficiaryName &&
+      transaction.amountXof.greaterThanOrEqualTo(thresholdXof.mul(0.5))
+        ? {
+            rule: 'BENEFICIAIRE_TIERS',
+            severity: ComplianceSeverity.ALERTE,
+            message: `${fcfa(transaction.amountXof)} remis à un tiers (${transaction.beneficiaryName}${transaction.beneficiaryRelation ? `, ${transaction.beneficiaryRelation}` : ''}). Vérifier le lien déclaré avec le client.`,
+          }
+        : null,
+  },
+  {
     /** Rythme anormal : cinq opérations dans la journée sortent de l'usage. */
     code: 'RYTHME_INHABITUEL',
     evaluate: ({ last24hCount }) =>

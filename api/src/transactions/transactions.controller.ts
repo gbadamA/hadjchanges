@@ -19,6 +19,8 @@ import { CurrentUser, Roles } from '../common/decorators';
 import { ApiZodBody, ZBody } from '../common/zod';
 import { ExportService } from '../documents/export.service';
 import type { UploadedDocument } from '../kyc/kyc.service';
+import { counterTransactionSchema, type CounterTransactionInput } from './counter.schemas';
+import { CounterService } from './counter.service';
 import { ReceiptsService, type ReceiptQueueRow } from './receipts.service';
 import {
   cancelSchema,
@@ -44,6 +46,7 @@ export class TransactionsController {
     private readonly transactions: TransactionsService,
     private readonly receipts: ReceiptsService,
     private readonly exports: ExportService,
+    private readonly counter: CounterService,
   ) {}
 
   @Roles(Role.CLIENT)
@@ -56,6 +59,23 @@ export class TransactionsController {
     @Req() request: Request,
   ): Promise<TransactionView> {
     return this.transactions.create(body, current, request.ip);
+  }
+
+  /**
+   * Opération au guichet : le client est devant l'agent, avec ses espèces.
+   * Tout se fait d'un coup — saisie, change, caisse, clôture — et le reçu
+   * s'imprime dans la foulée.
+   */
+  @Roles(...STAFF)
+  @Post('counter')
+  @ApiOperation({ summary: 'Enregistrer et exécuter une opération au guichet.' })
+  @ApiZodBody('CounterTransaction', counterTransactionSchema)
+  counterTransaction(
+    @ZBody(counterTransactionSchema) body: CounterTransactionInput,
+    @CurrentUser() current: AuthUser,
+    @Req() request: Request,
+  ): Promise<TransactionView> {
+    return this.counter.execute(body, current, request.ip);
   }
 
   @Roles(Role.CLIENT)

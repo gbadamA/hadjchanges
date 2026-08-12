@@ -1,5 +1,5 @@
 import { ConflictException, Injectable } from '@nestjs/common';
-import { TransactionStatus } from '@prisma/client';
+import { TransactionChannel, TransactionStatus } from '@prisma/client';
 
 /**
  * Machine à états d'une transaction (cahier §3.2).
@@ -41,18 +41,44 @@ export const TIMELINE_ORDER: TransactionStatus[] = [
   TransactionStatus.CLOTUREE,
 ];
 
+/**
+ * Transitions **supplémentaires** au guichet.
+ *
+ * Le client est là, avec ses billets : il n'y a pas de reçu de virement à
+ * contrôler, donc l'agent exécute le change directement. Ce raccourci est
+ * déclaré ici, séparément, plutôt qu'ajouté à la table commune — l'ouvrir à
+ * tout le monde laisserait une opération de l'application sauter le contrôle
+ * du paiement, c'est-à-dire exécuter un change sans avoir vu l'argent.
+ */
+const COUNTER_TRANSITIONS: Partial<Record<TransactionStatus, TransactionStatus[]>> = {
+  [TransactionStatus.CREEE]: [TransactionStatus.CHANGE_EXECUTE],
+  // Au guichet l'argent est remis dans la foulée : pas d'attente de retrait.
+  [TransactionStatus.CHANGE_EXECUTE]: [TransactionStatus.CLOTUREE],
+};
+
 @Injectable()
 export class TransactionStateMachine {
-  can(from: TransactionStatus, to: TransactionStatus): boolean {
-    return TRANSITIONS[from].includes(to);
+  can(
+    from: TransactionStatus,
+    to: TransactionStatus,
+    channel: TransactionChannel = TransactionChannel.APPLICATION,
+  ): boolean {
+    if (TRANSITIONS[from].includes(to)) return true;
+    return (
+      channel === TransactionChannel.GUICHET && (COUNTER_TRANSITIONS[from]?.includes(to) ?? false)
+    );
   }
 
   /**
    * Refuse une transition invalide avec un message qui dit l'état courant :
    * « transition impossible » sans contexte est inexploitable en production.
    */
-  assert(from: TransactionStatus, to: TransactionStatus): void {
-    if (!this.can(from, to)) {
+  assert(
+    from: TransactionStatus,
+    to: TransactionStatus,
+    channel: TransactionChannel = TransactionChannel.APPLICATION,
+  ): void {
+    if (!this.can(from, to, channel)) {
       throw new ConflictException(
         `Transition refusée : une transaction ${LABELS[from]} ne peut pas passer à ${LABELS[to]}.`,
       );

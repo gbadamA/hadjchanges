@@ -85,7 +85,26 @@ avec auteur + horodatage — exigence §4 du cahier, non négociable.
 
 ---
 
-## 5. Le flux de transaction (cœur du produit)
+## 5. Deux types de clients — deux parcours
+
+| | **Client de l'application** | **Client au guichet** |
+|---|---|---|
+| Qui saisit | le client, sur son téléphone | l'agent, devant lui |
+| Identité | KYC déposé et validé au back-office | **pièce présentée et vue de visu** par l'agent |
+| Paiement | dépôt mobile money / CB, **reçu importé puis contrôlé** | espèces posées sur le comptoir |
+| Fin de course | fonds mis à disposition, puis retrait | **argent remis séance tenante** |
+| Justificatif | téléchargeable à la clôture | **imprimé immédiatement** |
+| Canal (`Transaction.channel`) | `APPLICATION` | `GUICHET` |
+
+Les deux passent par **le même calcul** (`quote-calculator.ts`), la **même caisse** et les **mêmes
+règles de vigilance**. Seul le chemin change, jamais l'arithmétique.
+
+**« Qui bénéficie »** est commun aux deux : les fonds peuvent aller à un tiers (famille, employeur,
+agence de voyage). Vide = le client lui-même.
+
+---
+
+## 5 bis. Le flux de transaction (cœur du produit)
 
 ```
 CREEE ──reçu importé──► RECU_SOUMIS ──opérateur──┬─► RECU_VALIDE ─exécution─► CHANGE_EXECUTE

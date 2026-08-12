@@ -85,6 +85,7 @@ hadjchanges/
 │       ├── storage/       🟢 port + adaptateurs local/S3 — clés opaques, JAMAIS servi en statique
 │       ├── notifications/ 🟢 transports (Expo Push, email, WhatsApp, SMS) + alertes de taux
 │       ├── transactions/  🟢 machine à états + reçus + `exchange-executor.ts` (l'argent bouge ici)
+│       │                    + `counter.service.ts` 🏦 le parcours GUICHET
 │       ├── cash/          🟢 mouvements, soldes (cache recalculable), clôture journalière
 │       ├── compliance/    🟢 règles de vigilance (fonctions pures) + alertes + plafonds
 │       ├── documents/     🟢 justificatif PDF (PDFKit) + exports xlsx/CSV

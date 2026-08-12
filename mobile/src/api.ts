@@ -47,6 +47,8 @@ export interface CreateTransactionInput {
   depositMethod: DepositMethod;
   payoutMethod: PayoutMethod;
   payoutDetails?: string;
+  /** Renseigné seulement si les fonds vont à quelqu'un d'autre. */
+  beneficiary?: { name: string; phone?: string; relation?: string };
 }
 
 /**

@@ -1815,6 +1815,136 @@ async function main() {
     );
   }
 
+  // ---------------------------------------------------------------- guichet --
+  section('Opération au guichet');
+  {
+    const operateur = await login(OPERATEUR);
+    const client = await login(CLIENT);
+    const suffix = Date.now().toString().slice(-6);
+    const phone = `0544${suffix}`;
+
+    const refuse = await call('POST', '/transactions/counter', {
+      token: client.accessToken,
+      body: {
+        customer: { firstName: 'Test', lastName: 'Client', phone, idType: 'CNI', idNumber: 'CI000111' },
+        direction: 'ACHAT_DEVISE',
+        currencyCode: 'EUR',
+        amount: 100,
+      },
+    });
+    check('un client ne saisit pas au guichet (403)', refuse.status === 403, `reçu ${refuse.status}`);
+
+    // Pièce d'identité obligatoire : c'est elle qui remplace le parcours KYC.
+    const sansPiece = await call('POST', '/transactions/counter', {
+      token: operateur.accessToken,
+      body: {
+        customer: { firstName: 'Sans', lastName: 'Piece', phone, idType: 'CNI', idNumber: '' },
+        direction: 'ACHAT_DEVISE',
+        currencyCode: 'EUR',
+        amount: 100,
+      },
+    });
+    check('sans numéro de pièce, l’opération est refusée (400)', sansPiece.status === 400, `reçu ${sansPiece.status}`);
+
+    const avantCaisse = await call('GET', `/cash/${(await call('GET', '/agencies')).data.find((a) => a.code === 'PLT').id}/balances`, {
+      token: admin.accessToken,
+    });
+    const eurAvant = Number((avantCaisse.data ?? []).find((row) => row.currency.code === 'EUR')?.amount);
+
+    const guichet = await call('POST', '/transactions/counter', {
+      token: operateur.accessToken,
+      body: {
+        customer: {
+          firstName: 'Mariam',
+          lastName: 'Cissé',
+          phone,
+          idType: 'CNI',
+          idNumber: `CI${suffix}`,
+        },
+        beneficiary: { name: 'Oumar Cissé', phone: '0555000111', relation: 'frère' },
+        direction: 'ACHAT_DEVISE',
+        currencyCode: 'EUR',
+        amount: 250,
+        side: 'SOURCE',
+      },
+    });
+    check('l’opérateur enregistre une opération au guichet (201)', guichet.status === 201, `reçu ${guichet.status}`);
+    check('elle est marquée comme venant du guichet', guichet.data?.channel === 'GUICHET');
+    // Le client repart avec son argent : rien ne reste « à faire ».
+    check(
+      'elle est close immédiatement, sans étape d’attente',
+      guichet.data?.status === 'CLOTUREE',
+      String(guichet.data?.status),
+    );
+    check('le bénéficiaire est enregistré', guichet.data?.beneficiary?.name === 'Oumar Cissé');
+    check('son lien avec le client est conservé', guichet.data?.beneficiary?.relation === 'frère');
+
+    // La caisse a réellement bougé : c'est ce qui distingue une vraie opération
+    // d'une simple écriture.
+    const apresCaisse = await call('GET', `/cash/${guichet.data.agency.id}/balances`, {
+      token: admin.accessToken,
+    });
+    const eurApres = Number((apresCaisse.data ?? []).find((row) => row.currency.code === 'EUR')?.amount);
+    check(
+      'les devises apportées entrent en caisse',
+      Math.abs(eurApres - eurAvant - 250) < 0.01,
+      `${eurAvant} → ${eurApres}`,
+    );
+
+    // Le client est créé, vérifié, et retrouvé au passage suivant.
+    const fiche = await call('GET', `/clients?search=${phone}`, { token: admin.accessToken });
+    const cree = (fiche.data ?? [])[0];
+    check('le client du guichet est enregistré', cree !== undefined);
+    check('son identité est réputée vérifiée', cree?.kycStatus === 'VALIDE', String(cree?.kycStatus));
+
+    const secondPassage = await call('POST', '/transactions/counter', {
+      token: operateur.accessToken,
+      body: {
+        customer: { firstName: 'Mariam', lastName: 'Cissé', phone, idType: 'CNI', idNumber: `CI${suffix}` },
+        direction: 'ACHAT_DEVISE',
+        currencyCode: 'EUR',
+        amount: 100,
+      },
+    });
+    check('un habitué repasse sans créer de doublon (201)', secondPassage.status === 201, `reçu ${secondPassage.status}`);
+    const apresSecond = await call('GET', `/clients?search=${phone}`, { token: admin.accessToken });
+    check(
+      'il reste un seul client pour ce numéro',
+      (apresSecond.data ?? []).length === 1,
+      `${apresSecond.data?.length} fiches`,
+    );
+
+    // Le reçu à imprimer est disponible tout de suite.
+    const recu = await fetch(`${API}/transactions/${guichet.data.id}/justificatif.pdf`, {
+      headers: { authorization: `Bearer ${operateur.accessToken}` },
+    });
+    const octets = Buffer.from(await recu.arrayBuffer());
+    check('le reçu s’imprime dans la foulée (200)', recu.status === 200, `reçu ${recu.status}`);
+    check('c’est bien un PDF', octets.subarray(0, 5).toString() === '%PDF-');
+
+    // Le raccourci du guichet ne doit PAS s'ouvrir aux opérations de l'app.
+    const parApp = await call('GET', '/transactions?status=CREEE', { token: admin.accessToken });
+    const enAttente = (parApp.data ?? []).find((row) => row.channel === 'APPLICATION');
+    if (enAttente) {
+      const saut = await call('POST', `/transactions/${enAttente.id}/ready`, {
+        token: admin.accessToken,
+      });
+      check(
+        'une opération de l’application ne peut toujours pas sauter le contrôle (409)',
+        saut.status === 409,
+        `reçu ${saut.status}`,
+      );
+    } else {
+      skip('cloisonnement du raccourci guichet', 'aucune opération d’application en attente');
+    }
+
+    const trace = await call('GET', '/audit?entity=Transaction&take=10', { token: admin.accessToken });
+    check(
+      'l’opération de guichet est tracée comme telle',
+      (trace.data ?? []).some((row) => row.action === 'transaction.counter'),
+    );
+  }
+
   // ------------------------------------------------------------------ bilan --
   console.log(`\n${'='.repeat(60)}`);
   console.log(`${passed} vérifications passées · ${failed} échouées · ${skipped} ignorées`);

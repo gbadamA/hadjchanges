@@ -19,6 +19,7 @@ const ALL_STAFF: Role[] = ['OPERATEUR', 'ADMIN', 'SUPER_ADMIN'];
 const MANAGERS: Role[] = ['ADMIN', 'SUPER_ADMIN'];
 
 export const NAVIGATION: NavItem[] = [
+  { href: '/guichet', label: 'Guichet', roles: ALL_STAFF, ready: true },
   { href: '/kyc', label: 'Identités', roles: ALL_STAFF, ready: true },
   { href: '/recus', label: 'Reçus de paiement', roles: ALL_STAFF, ready: true },
   { href: '/transactions', label: 'Transactions', roles: ALL_STAFF, ready: true },

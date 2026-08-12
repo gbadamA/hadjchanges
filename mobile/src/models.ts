@@ -94,6 +94,8 @@ export interface Transaction {
   status: TransactionStatus;
   statusLabel: string;
   direction: TransactionDirection;
+  channel: 'APPLICATION' | 'GUICHET';
+  beneficiary: { name: string; phone: string | null; relation: string | null } | null;
   sourceCurrency: string;
   targetCurrency: string;
   sourceAmount: string;

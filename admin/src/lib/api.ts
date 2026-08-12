@@ -152,6 +152,35 @@ export interface TransactionRow {
   }>;
 }
 
+export interface CounterInput {
+  customer: {
+    firstName: string;
+    lastName: string;
+    phone: string;
+    email?: string;
+    idType: string;
+    idNumber: string;
+  };
+  beneficiary?: { name: string; phone?: string; relation?: string };
+  direction: 'ACHAT_DEVISE' | 'VENTE_DEVISE';
+  currencyCode: string;
+  amount: number;
+  side: 'SOURCE' | 'TARGET';
+  agencyId?: string;
+  note?: string;
+}
+
+export interface QuotePreview {
+  sourceCurrency: string;
+  targetCurrency: string;
+  sourceAmount: string;
+  targetAmount: string;
+  appliedRate: string;
+  commissionPct: string;
+  commissionAmount: string;
+  amountXof: string;
+}
+
 export interface ReceiptRow {
   id: string;
   status: string;
@@ -178,6 +207,15 @@ export const transactions = {
       body: { reason },
       token,
     }),
+  /** Simulation publique — sert d'aperçu au guichet pendant la saisie. */
+  simulate: (body: {
+    direction: string;
+    currencyCode: string;
+    amount: number;
+    side: 'SOURCE' | 'TARGET';
+  }) => apiFetch<QuotePreview>('/quotes/simulate', { method: 'POST', body }),
+  counter: (body: CounterInput, token: string) =>
+    apiFetch<TransactionRow>('/transactions/counter', { method: 'POST', body, token }),
   markReady: (id: string, token: string) =>
     apiFetch<TransactionRow>(`/transactions/${id}/ready`, { method: 'POST', token }),
   close: (id: string, token: string) =>

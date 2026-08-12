@@ -184,6 +184,19 @@ export class ReceiptPdfService {
           : '—',
       ],
       ['Agence', transaction.agency ? `${transaction.agency.name} — ${transaction.agency.city}` : '—'],
+      ['Origine', transaction.channel === 'GUICHET' ? 'Opération au guichet' : 'Application mobile'],
+      // Le bénéficiaire ne figure QUE s'il diffère du client : une ligne
+      // « bénéficiaire : lui-même » n'apprend rien et allonge le document.
+      ...(transaction.beneficiaryName
+        ? ([
+            [
+              'Bénéficiaire',
+              transaction.beneficiaryRelation
+                ? `${transaction.beneficiaryName} (${transaction.beneficiaryRelation})`
+                : transaction.beneficiaryName,
+            ],
+          ] as Array<[string, string]>)
+        : []),
       ['Contre-valeur', this.money(transaction.amountXof.toString(), 0, 'XOF')],
       ['Statut', LABELS[transaction.status]],
     ];

@@ -69,6 +69,16 @@ enum TransactionStatus {
   ANNULEE
 }
 
+/// Par où l'opération arrive au bureau.
+/// APPLICATION : le client saisit lui-même, dépose un reçu, un agent contrôle.
+/// GUICHET     : le client se présente avec ses espèces et sa pièce ; l'agent
+///               saisit, vérifie l'identité de visu et remet l'argent séance
+///               tenante. Il n'y a pas de reçu à contrôler — l'argent est là.
+enum TransactionChannel {
+  APPLICATION
+  GUICHET
+}
+
 enum DepositMethod {
   ORANGE_MONEY
   MTN_MOMO
@@ -194,7 +204,10 @@ model KycDocument {
   userId  String
   user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   type    DocumentType
-  fileUrl String
+  /// null quand l'agent a vérifié la pièce **de visu** au guichet sans la
+  /// photographier. Obligatoire pour un dépôt depuis l'application, et pour
+  /// toute opération au-dessus du seuil de déclaration.
+  fileUrl String?
   /// Selfie de vérification — optionnel mais recommandé (cahier §3.2).
   selfieUrl String?
 
@@ -441,6 +454,18 @@ model Transaction {
   agencyId String?
   agency   Agency? @relation(fields: [agencyId], references: [id])
 
+  /// Voie d'arrivée de l'opération — elle change le parcours, pas le calcul.
+  channel TransactionChannel @default(APPLICATION)
+
+  /// Qui reçoit réellement les fonds. Vide = le client lui-même.
+  /// ⚠️ Un bénéficiaire tiers est un signal de vigilance LCB-FT : c'est le
+  /// montage le plus banal pour faire circuler de l'argent sous le nom
+  /// de quelqu'un d'autre.
+  beneficiaryName  String?
+  beneficiaryPhone String?
+  /// Lien déclaré avec le client (frère, employeur, agence de voyage…).
+  beneficiaryRelation String?
+
   direction        TransactionDirection
   sourceCurrencyId String
   sourceCurrency   Currency             @relation("SourceCurrency", fields: [sourceCurrencyId], references: [id])
@@ -494,6 +519,7 @@ model Transaction {
   complianceAlerts ComplianceAlert[]
 
   @@index([clientId, createdAt])
+  @@index([channel, createdAt])
   @@index([status, createdAt])
   @@index([agencyId, createdAt])
 }
