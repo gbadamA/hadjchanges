@@ -522,6 +522,27 @@ export const staff = {
     }),
 };
 
+export interface SettingRow {
+  key: string;
+  label: string;
+  kind: 'phone' | 'number';
+  value: string;
+  updatedAt: string | null;
+}
+
+export const settings = {
+  list: (token: string) => apiFetch<SettingRow[]>('/settings', { token }),
+  update: (key: string, value: string, token: string) =>
+    apiFetch<SettingRow>(`/settings/${key}`, { method: 'PATCH', body: { value }, token }),
+  testChannel: (channel: string, token: string) =>
+    apiFetch<{ channel: string; attempted: boolean; delivered: boolean; detail: string }>(
+      '/notifications/test',
+      { method: 'POST', body: { channel }, token },
+    ),
+  channels: (token: string) =>
+    apiFetch<Array<{ channel: string; configured: boolean }>>('/notifications/channels', { token }),
+};
+
 export const kyc = {
   queue: (status: KycStatus, token: string) =>
     apiFetch<KycDocumentRow[]>(`/kyc/queue?status=${status}`, { token }),

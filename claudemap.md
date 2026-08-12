@@ -91,7 +91,7 @@ hadjchanges/
 │       └── reporting/     🟢 volumes, commissions, séries et répartitions + export comptable
 │
 ├── scripts-verif/
-│   └── api-check.mjs      ✅ vérification exécutable de bout en bout (261 contrôles)
+│   └── api-check.mjs      ✅ vérification exécutable de bout en bout (277 contrôles)
 │
 ├── admin/                 Next.js 15 (App Router)
 │   └── src/
@@ -102,8 +102,8 @@ hadjchanges/
 │       ├── components/charts.tsx 📈 AreaChart · BarList · Donut — SVG maison, animés une fois
 │       └── app/
 │           ├── login         🟢 connexion équipe
-│           └── (dash)/       🟢 les 10 modules : kyc, recus, transactions, taux, clients,
-│                             caisses, agences, rapports, equipe, conformite, audit
+│           └── (dash)/       🟢 les 11 modules : kyc, recus, transactions, taux, clients,
+│                             caisses, agences, rapports, equipe, conformite, audit, reglages
 │
 └── mobile/                📱 React Expo 57
     ├── app.json           ⚙️ Config Expo (safe-area, back gesture off)

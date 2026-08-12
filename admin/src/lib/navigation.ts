@@ -30,6 +30,7 @@ export const NAVIGATION: NavItem[] = [
   { href: '/equipe', label: 'Équipe', roles: ['SUPER_ADMIN'], ready: true },
   { href: '/conformite', label: 'Conformité', roles: MANAGERS, ready: true },
   { href: '/audit', label: 'Journal d’audit', roles: MANAGERS, ready: true },
+  { href: '/reglages', label: 'Réglages', roles: ['SUPER_ADMIN'], ready: true },
 ];
 
 export const navigationFor = (role: Role): NavItem[] =>

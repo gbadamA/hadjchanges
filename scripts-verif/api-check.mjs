@@ -1558,13 +1558,17 @@ async function main() {
       },
     });
 
+    // ⚠️ Ne pas COMPTER : la liste est plafonnée côté API, si bien qu'au-delà
+    // de 50 notifications le compteur n'augmente plus. On regarde la plus
+    // récente — c'est elle qui doit être neuve.
+    const derniereAvant = (avant.data ?? [])[0]?.id ?? null;
     const apres = await call('GET', '/notifications', { token: client.accessToken });
+    const message = (apres.data ?? [])[0];
     check(
       'publier un taux sous le seuil notifie le client',
-      (apres.data ?? []).length > (avant.data ?? []).length,
-      `${avant.data?.length} → ${apres.data?.length}`,
+      message !== undefined && message.id !== derniereAvant,
+      `tête inchangée (${derniereAvant})`,
     );
-    const message = (apres.data ?? [])[0];
     check('la notification nomme la devise et le seuil', /EUR/.test(String(message?.title)));
     check('elle renvoie vers le simulateur', message?.deepLink === '/simulateur');
 
@@ -1695,6 +1699,119 @@ async function main() {
         actions.includes('staff.suspend') &&
         actions.includes('staff.change_role'),
       actions.slice(0, 5).join(', '),
+    );
+  }
+
+  // -------------------------------------------------------------- réglages --
+  section('Réglages système et essai de canal');
+  {
+    const superAdmin = await login({ identifier: '0700000001', password: ADMIN.password });
+
+    const liste = await call('GET', '/settings', { token: admin.accessToken });
+    check('les réglages sont lisibles par l’encadrement (200)', liste.status === 200, `reçu ${liste.status}`);
+    check(
+      'chaque réglage annonce son libellé et sa nature',
+      (liste.data ?? []).every((row) => row.label && ['phone', 'number'].includes(row.kind)),
+    );
+
+    const client = await login(CLIENT);
+    const refus = await call('GET', '/settings', { token: client.accessToken });
+    check('un client ne lit pas les réglages (403)', refus.status === 403, `reçu ${refus.status}`);
+
+    const parAdmin = await call('PATCH', '/settings/depositNumberMtn', {
+      token: admin.accessToken,
+      body: { value: '0500000001' },
+    });
+    check('un administrateur ne modifie pas un réglage (403)', parAdmin.status === 403, `reçu ${parAdmin.status}`);
+
+    // Liste blanche : pas de création de clé fantôme.
+    const inconnu = await call('PATCH', '/settings/nimporteQuoi', {
+      token: superAdmin.accessToken,
+      body: { value: '42' },
+    });
+    check('une clé inconnue est refusée (404)', inconnu.status === 404, `reçu ${inconnu.status}`);
+
+    // Un numéro erroné envoie l'argent des clients ailleurs : on le vérifie.
+    const court = await call('PATCH', '/settings/depositNumberMtn', {
+      token: superAdmin.accessToken,
+      body: { value: '05000' },
+    });
+    check('un numéro incomplet est refusé (400)', court.status === 400, `reçu ${court.status}`);
+    const texte = await call('PATCH', '/settings/rateLockMinutes', {
+      token: superAdmin.accessToken,
+      body: { value: 'trente' },
+    });
+    check('un réglage numérique refuse du texte (400)', texte.status === 400, `reçu ${texte.status}`);
+
+    const avant = (await call('GET', '/settings/public')).data?.depositNumbers?.MTN_MOMO;
+    // ⚠️ Numéro tiré à chaque passage : écrire une valeur en dur ferait échouer
+    // le contrôle « la valeur a changé » dès la deuxième exécution.
+    const tire = `05${String(Date.now()).slice(-8)}`;
+    const espace = `${tire.slice(0, 2)} ${tire.slice(2, 4)} ${tire.slice(4, 6)} ${tire.slice(6, 8)} ${tire.slice(8)}`;
+
+    const pose = await call('PATCH', '/settings/depositNumberMtn', {
+      token: superAdmin.accessToken,
+      body: { value: espace },
+    });
+    check('un numéro valide est accepté (200)', pose.status === 200, `reçu ${pose.status}`);
+    check('les espaces de saisie sont nettoyés', pose.data?.value === tire, String(pose.data?.value));
+
+    // Le changement doit atteindre le client, pas seulement la base.
+    const apres = (await call('GET', '/settings/public')).data?.depositNumbers?.MTN_MOMO;
+    check(
+      'le nouveau numéro est servi à l’application cliente',
+      apres === tire && apres !== avant,
+      `${avant} → ${apres}`,
+    );
+
+    // Un réglage pilote vraiment le métier : on le prouve sur la durée du verrou.
+    await call('PATCH', '/settings/rateLockMinutes', {
+      token: superAdmin.accessToken,
+      body: { value: '45' },
+    });
+    const verrou = await call('POST', '/quotes/lock', {
+      token: client.accessToken,
+      body: { direction: 'VENTE_DEVISE', currencyCode: 'EUR', amount: 10_000, side: 'SOURCE' },
+    });
+    const minutes = (new Date(verrou.data?.lockedUntil).getTime() - Date.now()) / 60_000;
+    check(
+      'changer le réglage change vraiment la durée du verrou',
+      minutes > 44 && minutes <= 45,
+      `${minutes.toFixed(1)} min`,
+    );
+    await call('PATCH', '/settings/rateLockMinutes', {
+      token: superAdmin.accessToken,
+      body: { value: '30' },
+    });
+
+    const trace = await call('GET', '/audit?entity=Setting&take=10', { token: admin.accessToken });
+    check(
+      'les modifications de réglage sont tracées',
+      (trace.data ?? []).some((row) => row.action === 'setting.update'),
+    );
+
+    // Essai de canal : réservé à l'encadrement, et jamais vers un tiers.
+    const essaiClient = await call('POST', '/notifications/test', {
+      token: client.accessToken,
+      body: { channel: 'EMAIL' },
+    });
+    check('un client ne déclenche pas d’essai (403)', essaiClient.status === 403, `reçu ${essaiClient.status}`);
+
+    const essai = await call('POST', '/notifications/test', {
+      token: admin.accessToken,
+      body: { channel: 'EMAIL' },
+    });
+    check('l’essai de courriel aboutit (200)', essai.status === 200, `reçu ${essai.status}`);
+    check('il est annoncé comme remis', essai.data?.delivered === true, JSON.stringify(essai.data));
+
+    const essaiMuet = await call('POST', '/notifications/test', {
+      token: admin.accessToken,
+      body: { channel: 'WHATSAPP' },
+    });
+    check(
+      'un canal sans identifiants le dit au lieu de faire semblant',
+      essaiMuet.data?.delivered === false && /non configuré/i.test(String(essaiMuet.data?.detail)),
+      JSON.stringify(essaiMuet.data),
     );
   }
 
