@@ -34,7 +34,7 @@ Le cœur du produit tient en deux verrous :
 | **Base** | PostgreSQL 16 (Docker) | **54360** |
 | **Emails (dev)** | Mailpit | **8036** |
 | Auth | JWT access court + refresh à rotation stricte. **2FA : PAS encore implémenté** — les colonnes existent, le code non (cahier §4) | |
-| Fichiers | disque local en dev derrière un port `StorageService` (S3 en prod) | |
+| Fichiers | port `StorageService` + 2 adaptateurs : disque local (défaut) ou **S3** (`STORAGE_DRIVER`) | |
 | Temps réel | WebSocket (taux + statuts de transaction) | |
 | Notifications | Expo Push · WhatsApp Business / Twilio SMS · email | |
 
@@ -361,6 +361,15 @@ d'où la comparaison par code de caractère.
 ⚠️ **`content-disposition` doit être dans `exposedHeaders` de la configuration CORS.** Sans lui, le
 navigateur cache l'en-tête aux requêtes inter-origines et le dashboard enregistrait les exports
 sous un nom générique au lieu du nom daté envoyé par le serveur.
+
+⚠️ **Le compartiment S3 doit être PRIVÉ**, et aucune URL pré-signée n'est distribuée : la lecture
+passe par l'API, qui vérifie les droits puis relaie les octets. Plus coûteux en bande passante
+qu'une URL signée — c'est le prix d'un contrôle d'accès qui ne fuit pas. Éprouvé avec MinIO
+(`docker compose up -d minio`), suite complète passée en mode s3.
+
+⚠️ **`STORAGE_DRIVER=s3` sans compartiment renseigné ARRÊTE le démarrage** au lieu de retomber sur
+le disque : une pièce d'identité écrite sur le disque d'un conteneur éphémère disparaît au premier
+redéploiement, et personne ne s'en apercevrait avant un contrôle.
 
 ⚠️ **`PasswordService` vit dans son propre module** (`auth/password.module.ts`). Deux modules en ont
 besoin — l'authentification et la gestion d'équipe — et sans cette séparation `UsersModule` devrait

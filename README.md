@@ -97,6 +97,40 @@ Vérifié : `api-check.mjs` **261/261**, `tsc --noEmit` 0 erreur sur les trois b
 complète constatée dans le navigateur — simulation → verrou → opération → reçu → validation au
 dashboard → change exécuté → fonds disponibles → suivi horodaté côté client.
 
-Reste à faire avant mise en ligne : renseigner les clés WhatsApp Business et Twilio, remplacer les
-taux du seed par les taux réels de l’exploitant, basculer le stockage de fichiers sur S3, et
-déployer. Roadmap complète au §9 de [CLAUDE.md](CLAUDE.md).
+---
+
+## Mise en service
+
+### Canaux WhatsApp et SMS
+
+Renseigner `WHATSAPP_TOKEN` / `WHATSAPP_PHONE_ID` (Meta Cloud API) et
+`TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM` dans `api/.env`, puis vérifier :
+
+```bash
+curl -s -X POST http://localhost:3061/api/notifications/test -H "content-type: application/json" -H "authorization: Bearer <jeton-admin>" -d '{"channel":"WHATSAPP"}'
+```
+
+Le message part **vers le compte appelant**, jamais vers un numéro choisi. Tant que les clés
+manquent, `GET /notifications/channels` répond `configured: false` — le service passe simplement au
+canal suivant.
+
+### Stockage des fichiers sur S3
+
+Poser `STORAGE_DRIVER=s3` + `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` (et `S3_ENDPOINT` hors
+AWS). ⚠️ **Le compartiment doit être privé** : on y dépose des pièces d’identité, la lecture passe
+toujours par l’API. Un `STORAGE_DRIVER=s3` incomplet **arrête le démarrage** au lieu de retomber en
+silence sur le disque.
+
+Pour l’éprouver en local, un MinIO est fourni :
+
+```bash
+docker compose up -d minio && docker exec hadjchanges-minio mc alias set local http://localhost:9000 hadjchanges hadjchanges-secret && docker exec hadjchanges-minio mc mb local/hadjchanges-files
+```
+
+### Données à saisir par l’exploitant
+
+Les **taux du seed sont plausibles mais pas officiels** (seule la parité EUR/XOF est fixe), et les
+**numéros de dépôt mobile money sont fictifs**. Les uns se saisissent dans `/taux`, les autres dans
+`/reglages`.
+
+Roadmap complète au §9 de [CLAUDE.md](CLAUDE.md).

@@ -28,5 +28,22 @@ services:
       - "8036:8025" # interface web
       - "1036:1025" # SMTP
 
+  # Stockage objet compatible S3, pour éprouver `STORAGE_DRIVER=s3` sans
+  # compte chez un fournisseur. Console sur http://localhost:9011.
+  minio:
+    image: minio/minio:latest
+    container_name: hadjchanges-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: hadjchanges
+      MINIO_ROOT_PASSWORD: hadjchanges-secret
+    ports:
+      - "9010:9000"
+      - "9011:9001"
+    volumes:
+      - minio-data:/data
+
 volumes:
   db-data:
+  minio-data:

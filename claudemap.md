@@ -82,7 +82,7 @@ hadjchanges/
 │       ├── quotes/        🟢 simulation + verrouillage — `quote-calculator.ts` = LE calcul du change
 │       ├── realtime/      🟢 passerelle WebSocket `/rates` (diffusion des taux)
 │       ├── kyc/           🟢 dépôt de pièce + file de validation + décisions tracées
-│       ├── storage/       🟢 port fichiers — clés opaques, JAMAIS servi en statique
+│       ├── storage/       🟢 port + adaptateurs local/S3 — clés opaques, JAMAIS servi en statique
 │       ├── notifications/ 🟢 transports (Expo Push, email, WhatsApp, SMS) + alertes de taux
 │       ├── transactions/  🟢 machine à états + reçus + `exchange-executor.ts` (l'argent bouge ici)
 │       ├── cash/          🟢 mouvements, soldes (cache recalculable), clôture journalière

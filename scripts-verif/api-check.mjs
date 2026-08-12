@@ -1250,8 +1250,17 @@ async function main() {
     );
 
     // Le chiffre « réalisé » ne doit pas inclure les opérations en attente.
-    const pending = await call('GET', '/transactions?status=CREEE', { token: admin.accessToken });
-    const attendu = (pending.data ?? []).reduce((total, row) => total + Number(row.amountXof), 0);
+    // ⚠️ « En attente » ne veut pas dire « CREEE » : un reçu déposé ou rejeté
+    // n'est pas davantage exécuté. Ne sommer que CREEE faisait échouer ce
+    // contrôle dès qu'une opération traînait en cours de contrôle — le rapport
+    // avait raison, c'est la vérification qui regardait trop étroit.
+    const enAttente = ['CREEE', 'RECU_SOUMIS', 'RECU_VALIDE', 'RECU_REJETE'];
+    const lots = await Promise.all(
+      enAttente.map((status) => call('GET', `/transactions?status=${status}`, { token: admin.accessToken })),
+    );
+    const attendu = lots
+      .flatMap((lot) => lot.data ?? [])
+      .reduce((total, row) => total + Number(row.amountXof), 0);
     check(
       'les opérations non exécutées sont comptées à part, pas dans le volume',
       Math.abs(Number(data?.totals?.pendingXof) - attendu) < 1,

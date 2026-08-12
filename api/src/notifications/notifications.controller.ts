@@ -1,6 +1,6 @@
 import { Controller, Delete, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { Role, type Notification } from '@prisma/client';
+import { NotificationChannel, Role, type Notification } from '@prisma/client';
 import { z } from 'zod';
 import type { AuthUser } from '../common/auth-user';
 import { CurrentUser, Roles } from '../common/decorators';
@@ -12,6 +12,10 @@ const deviceSchema = z.object({
   /** Jeton Expo de l'appareil : `ExponentPushToken[...]`. */
   token: z.string().trim().min(10).max(200),
   platform: z.enum(['ios', 'android', 'web']),
+});
+
+const testSchema = z.object({
+  channel: z.nativeEnum(NotificationChannel),
 });
 
 const rateAlertSchema = z.object({
@@ -75,6 +79,41 @@ export class NotificationsController {
   @ApiOperation({ summary: 'Canaux de notification disponibles.' })
   channels() {
     return this.notifications.availableChannels();
+  }
+
+  /**
+   * Envoi d'essai — la façon de vérifier que des identifiants fraîchement
+   * posés fonctionnent, sans attendre qu'un vrai client déclenche une
+   * notification.
+   *
+   * ⚠️ **Le message part toujours vers le compte appelant**, jamais vers un
+   * destinataire choisi : un point d'envoi libre serait un relais de spam offert
+   * à quiconque obtiendrait un jeton d'administrateur.
+   */
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @Post('test')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'S’envoyer un message d’essai pour valider un canal.' })
+  @ApiZodBody('TestNotification', testSchema)
+  async test(
+    @ZBody(testSchema) body: z.infer<typeof testSchema>,
+    @CurrentUser() current: AuthUser,
+  ) {
+    const results = await this.notifications.notify({
+      userId: current.id,
+      title: 'Essai de configuration',
+      body: `Message d'essai envoyé depuis le pilotage HadjChanges le ${new Date().toLocaleString('fr-FR')}. Si vous le recevez, le canal est opérationnel.`,
+      channels: [body.channel],
+    });
+
+    const result = results[0];
+    return {
+      channel: body.channel,
+      // Aucun résultat = le transport n'est pas configuré, il a été écarté.
+      attempted: results.length > 0,
+      delivered: result?.delivered ?? false,
+      detail: result?.detail ?? 'canal non configuré — renseignez ses identifiants dans .env',
+    };
   }
 
   // --- Alertes de taux favorable -------------------------------------------

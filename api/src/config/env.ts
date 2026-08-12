@@ -20,6 +20,14 @@ const envSchema = z.object({
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
   STORAGE_LOCAL_DIR: z.string().default('./uploads'),
 
+  // Stockage objet. Vides tant que `STORAGE_DRIVER=local` ; le module de
+  // stockage refuse de démarrer en mode s3 s'il en manque une.
+  S3_ENDPOINT: z.string().default(''),
+  S3_REGION: z.string().default('us-east-1'),
+  S3_BUCKET: z.string().default(''),
+  S3_ACCESS_KEY: z.string().default(''),
+  S3_SECRET_KEY: z.string().default(''),
+
   SMTP_HOST: z.string().default('localhost'),
   SMTP_PORT: z.coerce.number().int().default(1036),
   MAIL_FROM: z.string().default('HadjChanges <no-reply@hadjchanges.ci>'),
