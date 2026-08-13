@@ -422,6 +422,24 @@ résoudrait, c'est-à-dire un pansement sur une dépendance mal placée.
 ⚠️ **Un jeton push refusé par Expo (`DeviceNotRegistered`) est supprimé immédiatement.** Le garder
 ferait échouer chaque envoi suivant, et la file finirait par ne plus rien livrer.
 
+⚠️⚠️ **`expo-notifications` ne s'importe JAMAIS en haut de fichier.** Depuis le **SDK 53**, Expo Go
+a perdu la notification distante et le module **lève dès son évaluation** sur Android. `push.ts`
+étant importé par `auth.tsx`, lui-même importé par `_layout.tsx`, un import statique empêchait
+**l'application entière de démarrer** dans Expo Go — pas seulement le push. Il se charge donc par
+`import()` **après** le garde-fou Expo Go (`push.ts`).
+
+⚠️ **Détecter Expo Go se fait par `Constants.appOwnership === 'expo'`**, bien qu'il soit marqué
+déprécié. Son remplaçant `executionEnvironment` vaut `storeClient` **pour Expo Go ET pour un build
+de développement** — or c'est exactement ces deux cas qu'il faut distinguer : le push marche dans
+le second.
+
+⚠️ **Pour vérifier qu'un module n'est plus chargé au démarrage**, inspecter le bundle plutôt que de
+faire confiance à la lecture du code :
+`curl "localhost:8081/node_modules/expo-router/entry.bundle?platform=android&dev=true&transform.routerRoot=src%2Fapp"`
+puis vérifier que la référence au module n'apparaît qu'à l'intérieur de la fonction, via
+`async-require`. ⚠️ **Sans `transform.routerRoot=src%2Fapp`, le bundle ne contient aucun écran de
+l'app** et l'inspection ne prouve rien.
+
 ⚠️ **`registerForPush` sort silencieusement sur émulateur** (Expo exige un appareil réel) **et ne
 redemande jamais une permission refusée** : le système ne réaffiche pas la fenêtre, insister ne
 produit qu'une boucle. L'app fonctionne sans push, les notifications restent lisibles dans l'écran

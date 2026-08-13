@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { api, ApiError, type AppNotification, type RateAlert } from '../api';
 import { useAuth } from '../auth';
+import { pushUnavailableReason } from '../push';
 import { C, R, S, T } from '../theme';
 import { Badge, Button, Card, EmptyState, ErrorBanner, Loader, PressableCard, Screen } from '../ui';
 
@@ -73,6 +74,15 @@ export default function NotificationsScreen(): ReactNode {
         </View>
 
         <ErrorBanner message={error} />
+
+        {/* Dire POURQUOI le téléphone ne sonnera pas, plutôt que de laisser
+            l'utilisateur croire que le bureau ne le prévient pas. */}
+        {accessToken && pushUnavailableReason() ? (
+          <Card style={styles.avis}>
+            <Ionicons name="information-circle-outline" size={20} color={C.navy} />
+            <Text style={[T.bodyMute, styles.avisTexte]}>{pushUnavailableReason()}</Text>
+          </Card>
+        ) : null}
 
         {!accessToken ? (
           <EmptyState
@@ -163,4 +173,6 @@ const styles = StyleSheet.create({
   alertRow: { flexDirection: 'row', alignItems: 'center', gap: S.md },
   alertText: { flex: 1, gap: 2 },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: S.sm },
+  avis: { flexDirection: 'row', gap: S.md, alignItems: 'flex-start', backgroundColor: C.navySoft },
+  avisTexte: { flex: 1 },
 });
