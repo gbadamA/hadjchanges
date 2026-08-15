@@ -53,7 +53,18 @@ export default function Accueil(): ReactNode {
               <Text style={T.caption}>en direct</Text>
             </View>
           </View>
-          <Button label="Simuler une conversion" onPress={() => router.push('/simulateur')} />
+          <Button
+            label="Changer de l’argent"
+            onPress={() => router.push('/operation/nouvelle')}
+            variant="gold"
+          />
+          {/* Le simulateur reste offert, mais en second : c'est l'outil de
+              celui qui regarde, pas de celui qui vient changer. */}
+          <Button
+            label="Simuler une conversion"
+            onPress={() => router.push('/simulateur')}
+            variant="ghost"
+          />
         </Card>
       </ImmersiveHeader>
 
@@ -61,7 +72,7 @@ export default function Accueil(): ReactNode {
         {profile ? (
           <View style={styles.authRow}>
             <Link href="/compte" asChild>
-              <Pressable style={[styles.account, styles.authButton]}>
+              <Pressable style={styles.account}>
                 <Ionicons name="person-circle-outline" size={22} color={C.navy} />
                 <Text style={[T.label, styles.accountText]} numberOfLines={1}>
                   {profile.firstName} · {KYC_LABEL[profile.kycStatus]}
@@ -69,7 +80,7 @@ export default function Accueil(): ReactNode {
               </Pressable>
             </Link>
             <Link href="/notifications" asChild>
-              <Pressable style={[styles.account, styles.authButton]}>
+              <Pressable style={styles.account}>
                 <Ionicons name="notifications-outline" size={22} color={C.navy} />
                 <Text style={[T.label, styles.accountText]} numberOfLines={1}>
                   Notifications
@@ -82,7 +93,7 @@ export default function Accueil(): ReactNode {
               </Pressable>
             </Link>
             <Link href="/operations" asChild>
-              <Pressable style={[styles.account, styles.authButton]}>
+              <Pressable style={styles.account}>
                 <Ionicons name="swap-horizontal-outline" size={22} color={C.navy} />
                 <Text style={[T.label, styles.accountText]} numberOfLines={1}>
                   Mes opérations
@@ -140,7 +151,10 @@ const styles = StyleSheet.create({
   body: { padding: S.lg, gap: S.md },
   authRow: { flexDirection: 'row', gap: S.md },
   authButton: { flex: 1 },
+  // ⚠️ Style UNIQUE, pas un tableau : ces boutons sont enfants directs d'un
+  // <Link asChild>, qui les clone via <Slot> et refuse une liste de styles.
   account: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: S.sm,

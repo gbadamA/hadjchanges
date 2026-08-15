@@ -117,9 +117,11 @@ hadjchanges/
         ├── components.tsx 🧩 Composés métier (RateCard · à venir : TxTimeline…)
         ├── models.ts      📐 Types miroirs du contrat API + helpers (fcfa, formatRate)
         ├── api.ts         🔌 Client HTTP — 1 SEUL point d'accès réseau
+        ├── api-url.ts     🔌 OÙ joindre l'API — déduit de l'hôte Metro
         ├── useApi.ts      ⏳ Hook useAsync (loading / error / reload)
         ├── auth.tsx       🟢 Auth JWT persistée + promesse de refresh PARTAGÉE
         ├── useRates.ts    🟢 taux du jour, tenus à jour par WebSocket
+        ├── useTransactionUpdates.ts 🟢 statuts en direct (socket authentifié)
         ├── push.ts        🟢 enregistrement de l'appareil (silencieux sur émulateur)
         └── app/           🖥️ Écrans (Expo Router) — voir §6
 ```
@@ -286,7 +288,8 @@ Correspondance cahier §7 : **phase 1** = briques 1-5 · **phase 2** = 6 + 9 · 
 | Les couleurs du dashboard | `admin/src/lib/tokens.ts` (+ `admin/tailwind.config.ts`, son miroir) |
 | Les couleurs / ombres / typo du mobile | `mobile/src/theme.ts` |
 | Un bouton, une carte, un champ (mobile) | `mobile/src/ui.tsx` |
-| Le branchement API mobile (et l'IP Wi-Fi) | `mobile/src/api.ts` |
+| Le branchement API mobile | `mobile/src/api.ts` |
+| L'adresse de l'API (émulateur, Wi-Fi, prod) | `mobile/src/api-url.ts` |
 | Un écran précis | §6 ci-dessus |
 | Les ports et les variables | `.env.example` · `docker-compose.yml` |
 | Comment démarrer | `README.md` |

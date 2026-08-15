@@ -6,7 +6,7 @@ import { api, ApiError } from '../api';
 import { useAuth } from '../auth';
 import { countdown, money, type Quote, type RateRow, type TransactionDirection } from '../models';
 import { C, R, S, T } from '../theme';
-import { Button, Card, ErrorBanner, Field, FormScreen, Loader, Segmented } from '../ui';
+import { Button, Card, EmptyState, ErrorBanner, Field, FormScreen, Loader, Segmented } from '../ui';
 import { useRates } from '../useRates';
 
 /** Délai avant d'appeler l'API : on ne simule pas à chaque frappe. */
@@ -21,7 +21,7 @@ const DEBOUNCE_MS = 350;
  *    visible — le client doit voir que la promesse a une durée.
  */
 export default function Simulateur(): ReactNode {
-  const { rows, loading: ratesLoading } = useRates();
+  const { rows, loading: ratesLoading, error: ratesError, reload: reloadRates } = useRates();
   const { accessToken } = useAuth();
   const router = useRouter();
 
@@ -137,6 +137,30 @@ export default function Simulateur(): ReactNode {
   const sourceLabel = isSale ? 'FCFA' : (selected?.currency.symbol ?? '');
   const remaining = locked?.lockedUntil ? countdown(locked.lockedUntil, now) : '';
 
+  // Sans taux, il n'y a rien à simuler — mais un écran muet laisse croire à une
+  // panne de l'application. On dit ce qui manque et on offre de réessayer.
+  if (rows.length === 0) {
+    return (
+      <FormScreen>
+        <View style={styles.head}>
+          <Pressable onPress={() => router.back()} hitSlop={12}>
+            <Ionicons name="arrow-back" size={24} color={C.ink} />
+          </Pressable>
+          <Text style={T.h1}>Simuler</Text>
+        </View>
+        <EmptyState
+          title="Taux indisponibles"
+          message={
+            ratesError
+              ? `${ratesError}\nLa simulation a besoin des taux du jour pour calculer.`
+              : 'Aucun taux n’est publié pour le moment. Réessayez dans un instant.'
+          }
+          action={<Button label="Réessayer" onPress={reloadRates} />}
+        />
+      </FormScreen>
+    );
+  }
+
   return (
     <FormScreen>
       <View style={styles.head}>
@@ -188,14 +212,41 @@ export default function Simulateur(): ReactNode {
 
       {quote ? (
         <Card elevated style={styles.result}>
-          <Text style={T.overline}>VOUS RECEVEZ</Text>
-          <Text style={styles.amount}>
-            {money(
-              quote.targetAmount,
-              isSale ? (selected?.currency.decimals ?? 2) : 0,
-              isSale ? (selected?.currency.symbol ?? '') : 'FCFA',
-            )}
+          {/* Les DEUX jambes de l'échange, toujours ensemble. « Vous recevez »
+              seul ne dit pas ce que l'opération coûte, et le sens — j'achète
+              des devises / je vends les miennes — devient illisible dès qu'on
+              quitte le sélecteur des yeux. */}
+          <Text style={T.overline}>
+            {isSale
+              ? `VOUS ACHETEZ DES ${selected?.currency.code ?? ''}`
+              : `VOUS VENDEZ VOS ${selected?.currency.code ?? ''}`}
           </Text>
+
+          <View style={styles.legs}>
+            <View style={styles.leg}>
+              <Text style={T.caption}>Vous donnez</Text>
+              <Text style={styles.given}>
+                {money(
+                  quote.sourceAmount,
+                  isSale ? 0 : (selected?.currency.decimals ?? 2),
+                  sourceLabel,
+                )}
+              </Text>
+            </View>
+
+            <Ionicons name="arrow-down" size={18} color={C.goldDeep} />
+
+            <View style={styles.leg}>
+              <Text style={T.caption}>Vous recevez</Text>
+              <Text style={styles.amount}>
+                {money(
+                  quote.targetAmount,
+                  isSale ? (selected?.currency.decimals ?? 2) : 0,
+                  isSale ? (selected?.currency.symbol ?? '') : 'FCFA',
+                )}
+              </Text>
+            </View>
+          </View>
 
           <View style={styles.detail}>
             <Line label="Taux appliqué" value={`1 ${selected?.currency.code} = ${quote.appliedRate} FCFA`} />
@@ -254,6 +305,16 @@ export default function Simulateur(): ReactNode {
             </Pressable>
           ) : null}
         </Card>
+      ) : computing ? (
+        <Card style={styles.pending}>
+          <Text style={T.bodyMute}>Calcul en cours…</Text>
+        </Card>
+      ) : !error ? (
+        // Ni résultat, ni calcul, ni erreur : c'est que le montant saisi n'en
+        // est pas un. Le dire vaut mieux que de laisser la carte disparaître.
+        <Card style={styles.pending}>
+          <Text style={T.bodyMute}>Saisissez un montant pour voir le résultat.</Text>
+        </Card>
       ) : null}
     </FormScreen>
   );
@@ -284,7 +345,11 @@ const styles = StyleSheet.create({
   chipLabel: { ...T.label, color: C.inkDim },
   chipLabelActive: { color: C.onDark },
   result: { gap: S.md },
+  legs: { alignItems: 'center', gap: S.xs },
+  leg: { alignItems: 'center', gap: 2 },
+  given: { ...T.title, color: C.inkDim },
   amount: { ...T.amount, color: C.navy },
+  pending: { alignItems: 'center' },
   detail: { gap: S.sm, borderTopWidth: 1, borderTopColor: C.lineSoft, paddingTop: S.md },
   line: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: S.md },
   lockedBox: {

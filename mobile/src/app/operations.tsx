@@ -8,6 +8,29 @@ import { downloadAndShare } from '../download';
 import { money, type Transaction, type TransactionStatus } from '../models';
 import { C, R, S, STATUS, T } from '../theme';
 import { Badge, Button, EmptyState, ErrorBanner, Loader, PressableCard, Screen } from '../ui';
+import { useTransactionUpdates } from '../useTransactionUpdates';
+
+/**
+ * Périodes proposées plutôt qu'un sélecteur de dates.
+ *
+ * Le cahier demande un filtre « par date » ; sur mobile, deux calendriers à
+ * remplir pour retrouver une opération du mois dernier est un geste que
+ * personne ne fait. Les bornes usuelles couvrent le besoin réel en un tap.
+ */
+const PERIODS: Array<{ value: string; label: string; days: number | null }> = [
+  { value: 'TOUTES', label: 'Toute période', days: null },
+  { value: '30J', label: '30 jours', days: 30 },
+  { value: '3M', label: '3 mois', days: 90 },
+  { value: '12M', label: '12 mois', days: 365 },
+];
+
+/**
+ * La devise d'une opération est sa jambe ÉTRANGÈRE : l'autre est toujours le
+ * franc CFA, devise de référence du bureau. Filtrer sur « XOF » ne trierait
+ * rien puisque toutes les opérations le portent.
+ */
+const currencyOf = (row: Transaction): string =>
+  row.sourceCurrency === 'XOF' ? row.targetCurrency : row.sourceCurrency;
 
 /** Filtres proposés au client — les statuts qu'il distingue vraiment. */
 const FILTERS: Array<{ value: TransactionStatus | 'TOUTES'; label: string }> = [
@@ -26,6 +49,8 @@ export default function Operations(): ReactNode {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<TransactionStatus | 'TOUTES'>('TOUTES');
+  const [currency, setCurrency] = useState<string>('TOUTES');
+  const [period, setPeriod] = useState<string>('TOUTES');
   const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async (): Promise<void> => {
@@ -48,6 +73,19 @@ export default function Operations(): ReactNode {
     void load();
   }, [load]);
 
+  // Mise à jour sur place. Une transaction inconnue de la liste est ajoutée en
+  // tête : elle vient forcément d'être créée, et la voir apparaître vaut mieux
+  // que de laisser croire qu'elle s'est perdue.
+  useTransactionUpdates((row) => {
+    setRows((current) => {
+      const index = current.findIndex((item) => item.id === row.id);
+      if (index === -1) return [row, ...current];
+      const next = [...current];
+      next[index] = row;
+      return next;
+    });
+  });
+
   const exportHistory = async (): Promise<void> => {
     if (!accessToken) return;
     setExporting(true);
@@ -65,9 +103,20 @@ export default function Operations(): ReactNode {
     }
   };
 
-  // Le filtre s'applique côté client : l'historique tient en une page, un
+  // Les filtres s'appliquent côté client : l'historique tient en une page, un
   // aller-retour réseau par bouton serait du gaspillage.
-  const visible = filter === 'TOUTES' ? rows : rows.filter((row) => row.status === filter);
+  // Les devises proposées sont celles réellement présentes dans l'historique :
+  // offrir un filtre qui ne renvoie jamais rien est une fausse piste.
+  const currencies = Array.from(new Set(rows.map(currencyOf))).sort();
+  const days = PERIODS.find((option) => option.value === period)?.days ?? null;
+  const since = days === null ? null : Date.now() - days * 24 * 60 * 60 * 1000;
+
+  const visible = rows.filter(
+    (row) =>
+      (filter === 'TOUTES' || row.status === filter) &&
+      (currency === 'TOUTES' || currencyOf(row) === currency) &&
+      (since === null || new Date(row.createdAt).getTime() >= since),
+  );
 
   if (loading) return <Loader label="Chargement de vos opérations…" />;
 
@@ -99,22 +148,28 @@ export default function Operations(): ReactNode {
 
         {accessToken && rows.length > 0 ? (
           <>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filters}>
-              {FILTERS.map((option) => {
-                const active = option.value === filter;
-                return (
-                  <Pressable
-                    key={option.value}
-                    onPress={() => setFilter(option.value)}
-                    style={[styles.chip, active && styles.chipActive]}
-                  >
-                    <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>
-                      {option.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
+            <ChipRow
+              options={FILTERS.map((option) => ({ value: option.value, label: option.label }))}
+              value={filter}
+              onChange={(next) => setFilter(next as TransactionStatus | 'TOUTES')}
+            />
+            {/* Une seule devise dans l'historique : le filtre n'aurait rien à
+                trier, on ne l'affiche pas. */}
+            {currencies.length > 1 ? (
+              <ChipRow
+                options={[
+                  { value: 'TOUTES', label: 'Toutes devises' },
+                  ...currencies.map((code) => ({ value: code, label: code })),
+                ]}
+                value={currency}
+                onChange={setCurrency}
+              />
+            ) : null}
+            <ChipRow
+              options={PERIODS.map((option) => ({ value: option.value, label: option.label }))}
+              value={period}
+              onChange={setPeriod}
+            />
             <ErrorBanner message={error} />
           </>
         ) : null}
@@ -124,6 +179,24 @@ export default function Operations(): ReactNode {
             title="Aucune opération"
             message="Vos changes apparaîtront ici dès votre première opération."
             action={<Button label="Simuler une conversion" onPress={() => router.push('/simulateur')} />}
+          />
+        ) : null}
+
+        {accessToken && !error && rows.length > 0 && visible.length === 0 ? (
+          <EmptyState
+            title="Aucune opération ne correspond"
+            message="Aucune de vos opérations ne remplit ces critères. Élargissez la recherche pour les revoir."
+            action={
+              <Button
+                label="Tout afficher"
+                variant="ghost"
+                onPress={() => {
+                  setFilter('TOUTES');
+                  setCurrency('TOUTES');
+                  setPeriod('TOUTES');
+                }}
+              />
+            }
           />
         ) : null}
 
@@ -165,6 +238,34 @@ export default function Operations(): ReactNode {
         ) : null}
       </View>
     </Screen>
+  );
+}
+
+/** Une rangée de filtres défilante. Même rendu pour statut, devise et période. */
+function ChipRow({
+  options,
+  value,
+  onChange,
+}: {
+  options: Array<{ value: string; label: string }>;
+  value: string;
+  onChange: (value: string) => void;
+}): ReactNode {
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filters}>
+      {options.map((option) => {
+        const active = option.value === value;
+        return (
+          <Pressable
+            key={option.value}
+            onPress={() => onChange(option.value)}
+            style={[styles.chip, active && styles.chipActive]}
+          >
+            <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>{option.label}</Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
   );
 }
 

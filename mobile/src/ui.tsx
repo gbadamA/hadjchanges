@@ -366,7 +366,9 @@ const styles = StyleSheet.create({
   },
   ghostLabel: { ...T.title, color: C.navy },
   pressed: { transform: [{ scale: 0.97 }], opacity: 0.92 },
-  disabled: { opacity: 0.45 },
+  // 0.45 effaçait le bouton au point qu'on le croyait absent ; il doit rester
+  // reconnaissable comme bouton, seulement visiblement inactif.
+  disabled: { opacity: 0.7 },
   formContent: { padding: S.lg, gap: S.lg },
   field: { gap: S.xs },
   inputRow: {

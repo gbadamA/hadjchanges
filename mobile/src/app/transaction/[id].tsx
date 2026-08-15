@@ -9,6 +9,7 @@ import { downloadAndShare } from '../../download';
 import { DEPOSIT_LABEL, money, type Transaction } from '../../models';
 import { C, R, S, STATUS, STATUS_HINT, T } from '../../theme';
 import { Badge, Button, Card, EmptyState, ErrorBanner, Loader, Screen } from '../../ui';
+import { useTransactionUpdates } from '../../useTransactionUpdates';
 
 /**
  * Suivi d'une opération : où j'en suis, et quoi faire maintenant.
@@ -51,6 +52,13 @@ export default function TransactionDetail(): ReactNode {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Le reçu validé par l'opérateur apparaît ici SANS que le client touche à
+  // quoi que ce soit. On filtre sur l'identifiant : le socket porte toutes les
+  // transactions du client, pas seulement celle affichée.
+  useTransactionUpdates((row) => {
+    if (row.id === id) setTransaction(row);
+  });
 
   const sendReceipt = async (): Promise<void> => {
     if (!accessToken || !transaction) return;

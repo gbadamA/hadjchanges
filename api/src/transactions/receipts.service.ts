@@ -15,6 +15,7 @@ import { ExchangeExecutor } from './exchange-executor';
 import { TransactionStateMachine } from './transaction-state-machine';
 import type { ReceiptRejectInput, ReceiptReviewInput } from './transactions.schemas';
 import { toTransactionView, transactionInclude, type TransactionView } from './transactions.view';
+import { TransactionsGateway } from '../realtime/transactions.gateway';
 
 const ACCEPTED_MIME = ['image/jpeg', 'image/png', 'image/heic', 'image/webp', 'application/pdf'];
 const MAX_BYTES = 8 * 1024 * 1024;
@@ -45,6 +46,7 @@ export class ReceiptsService {
     private readonly executor: ExchangeExecutor,
     private readonly audit: AuditService,
     private readonly notifications: NotificationsService,
+    private readonly realtime: TransactionsGateway,
   ) {}
 
   /** Dépôt de la preuve de paiement par le client. */
@@ -94,7 +96,7 @@ export class ReceiptsService {
       after: { reference: transaction.reference },
       ip,
     });
-    return toTransactionView(updated);
+    return this.realtime.publishAndView(updated);
   }
 
   /** File de contrôle du dashboard (cahier §3.1 : « file dédiée »). */
@@ -235,7 +237,7 @@ export class ReceiptsService {
       deepLink: `/transaction/${receipt.transactionId}`,
     });
 
-    return toTransactionView(updated, { withClient: true });
+    return this.realtime.publishAndView(updated, { withClient: true });
   }
 
   private async pending(id: string) {

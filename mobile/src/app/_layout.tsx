@@ -27,7 +27,7 @@ function Navigation(): ReactNode {
 configureForeground();
 
 export default function RootLayout(): ReactNode {
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     PlusJakartaSans_400Regular,
     PlusJakartaSans_500Medium,
     PlusJakartaSans_600SemiBold,
@@ -35,11 +35,17 @@ export default function RootLayout(): ReactNode {
     PlusJakartaSans_800ExtraBold,
   });
 
+  // ⚠️ `fontError` DOIT ouvrir la porte lui aussi. Sans lui, une police qui ne
+  // se charge pas — réseau lent, fichier absent — fige l'application entière
+  // sur l'écran de chargement, définitivement. Une typographie de repli est un
+  // désagrément ; une application qui ne démarre pas est une panne.
+  const pretAAfficher = fontsLoaded || fontError !== null;
+
   return (
     <SafeAreaProvider>
       {/* En-tête immersif bleu nuit : le texte de la barre système doit être clair. */}
       <StatusBar style="light" />
-      {fontsLoaded ? (
+      {pretAAfficher ? (
         <AuthProvider>
           <Navigation />
         </AuthProvider>

@@ -15,6 +15,7 @@
     "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~57.0.12",
     "expo-blur": "~57.0.2",
+    "expo-build-properties": "~57.0.11",
     "expo-constants": "~57.0.10",
     "expo-device": "~57.0.1",
     "expo-document-picker": "~57.0.1",
@@ -38,6 +39,7 @@
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
     "react-native-web": "^0.21.2",
+    "react-native-worklets": "0.10.1",
     "socket.io-client": "^4.8.3"
   },
   "devDependencies": {

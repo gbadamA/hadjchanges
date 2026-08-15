@@ -21,3 +21,8 @@ yarn-error.log*
 Thumbs.db
 *.tsbuildinfo
 coverage/
+
+# Projets natifs régénérés par `expo prebuild` — jamais versionnés : ils se
+# reconstruisent à l'identique et pollueraient le dépôt de milliers de fichiers.
+mobile/android/
+mobile/ios/

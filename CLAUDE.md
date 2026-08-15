@@ -471,6 +471,34 @@ le taux global reprenait la main **sans que personne ne l'ait décidé** — bug
 `api-check.mjs` après une vingtaine de republications globales. Chaque périmètre a sa propre
 requête dans `RatesRepository.current`.
 
+⚠️ **Un bouton désactivé doit dire CE QUI MANQUE, et rester lisible comme bouton.** Le bouton de
+validation du formulaire d'opération était éteint à `opacity: 0.45` sans un mot d'explication : on
+le croyait absent, et le formulaire paraissait inachevé. Deux règles qui en découlent : l'opacité
+d'un état inactif est à **0.7** (`ui.tsx`), et toute condition `disabled` composite se calcule sous
+forme d'une **raison affichable** (`bloquant`), jamais d'un booléen anonyme. Corollaire : ne jamais
+avaler l'erreur d'un chargement dont dépend l'activation — une liste d'agences vide éteignait le
+bouton pour toujours en silence.
+
+⚠️ **`useFonts` renvoie une ERREUR qu'il faut traiter.** `_layout.tsx` n'ouvrait la porte que sur
+`fontsLoaded` : une police qui ne se charge pas figeait l'application entière sur « Chargement… »,
+définitivement. La condition est `fontsLoaded || fontError !== null`. Une typographie de repli est un
+désagrément ; une application qui ne démarre pas est une panne.
+
+⚠️ **Un écran n'existe que s'il a une porte d'entrée VISIBLE.** Le formulaire d'opération
+(`operation/nouvelle.tsx`) était complet et conforme, mais joignable par un seul chemin de cinq
+niveaux : accueil → simulateur → connexion → « Verrouiller ce taux » → « Poursuivre ». Personne ne
+le trouvait, et un écran introuvable équivaut à un écran absent. L'accueil porte désormais
+« Changer de l'argent » en action principale, le simulateur passant en second. Corollaire : le
+formulaire fonctionne **avec ou sans devis verrouillé** — sans devis, il porte lui-même le montant
+et l'API reprend le taux du moment (`direction`/`currencyCode`/`amount` au lieu de `quoteId`).
+
+⚠️ **Un enfant direct de `<Link asChild>` ne reçoit qu'UN style, jamais un tableau.** `asChild`
+clone l'enfant via `<Slot>`, qui refuse `style={[a, b]}` et fait planter le rendu après la
+connexion — l'accueil authentifié étant le premier écran concerné, le bug ne se voyait qu'une fois
+connecté. Fusionner les styles dans une seule entrée de `StyleSheet.create` (pas un
+`StyleSheet.flatten` répété à chaque appel). Les styles imbriqués PLUS BAS dans l'arbre ne sont pas
+concernés : seul l'enfant cloné l'est.
+
 ⚠️ **Routes dynamiques d'Expo Router : forme objet obligatoire.**
 `router.push({ pathname: '/transaction/[id]', params: { id } })` — une chaîne interpolée ne compile
 pas avec les routes typées. Et ces types ne sont régénérés que par le serveur Metro : un `tsc` sur
@@ -479,11 +507,56 @@ un écran fraîchement ajouté échoue tant que Metro n'a pas tourné.
 ⚠️ **Le compteur du throttler est EN MÉMOIRE** : quelques passages du script de vérification
 épuisent le quota de `/auth/login` (429 en cascade). Redémarrer l'API le remet à zéro.
 
+⚠️ **Toute mutation d'une transaction DOIT passer par `TransactionsGateway.publishAndView()`**,
+jamais par `toTransactionView()` seul. Les deux gestes — diffuser au client et renvoyer la vue — sont
+réunis dans un unique appel exprès : séparés, on peut renvoyer une réponse HTTP correcte sans avoir
+rien diffusé, et le client garde un écran figé pendant que l'opérateur valide son reçu. Le défaut ne
+se voit alors qu'à l'usage. Les chemins de LECTURE (`mine`, `findOne`, files d'attente) gardent
+`toTransactionView` : diffuser sur une lecture réveillerait tous les écrans pour rien. Un point de
+mutation oublié est attrapé par la section « Suivi en temps réel » de `api-check.mjs`.
+
 ⚠️ **Le calcul du change n'existe qu'à UN endroit** : `api/src/quotes/quote-calculator.ts`. Le
 simulateur, le verrou et (bientôt) l'exécution de la transaction l'appellent tous. Ne jamais
 recopier cette arithmétique dans un écran ou un service : deux calculs qui divergent, c'est un écart
 de caisse à la fin du mois. **La commission se prélève toujours sur la jambe en XOF.**
 
-⚠️ **`.claude/launch.json` du poste n'accepte qu'un `cwd` RELATIF à la racine du workspace Jarvis.**
+⚠️ **Construire un APK : trois choses obligatoires, et deux se voient seulement à l'exécution.**
+1. `EXPO_PUBLIC_API_URL` doit être renseignée AVANT le build. Un APK autonome n'a pas de Metro, donc
+   l'auto-détection de `src/api-url.ts` ne s'applique pas : sans cette variable l'app retombe sur
+   `10.0.2.2`, valable pour un émulateur seulement. L'IP Wi-Fi étant instable, un APK visant le
+   réseau local meurt dès que l'IP change — le seul APK durable vise une API déployée en https.
+2. **Android bloque le HTTP en clair** en build de production depuis Android 9. Le plugin
+   `expo-build-properties` avec `android.usesCleartextTraffic: true` est ce qui rend l'API locale
+   joignable ; sans lui la compilation réussit et TOUS les appels échouent sur l'appareil. À retirer
+   le jour où l'API passe en https.
+3. `android/local.properties` doit porter `sdk.dir` (le poste n'a ni `ANDROID_HOME` ni
+   `ANDROID_SDK_ROOT` dans l'environnement).
+
+Le build release est signé avec le **keystore de debug** (défaut du gabarit Expo) : installable pour
+des tests internes, mais inutilisable pour le Play Store, qui exigera un keystore de production.
+`android/` est régénérable à volonté par `npx expo prebuild --platform android --clean`.
+
+⚠️ **`localhost` depuis un émulateur Android désigne l'ÉMULATEUR, pas le PC.** Une URL d'API en
+`http://localhost:3061` codée dans `mobile/.env` rendait toute connexion impossible depuis
+l'émulateur — avec pour seul symptôme « Connexion impossible. Vérifiez votre réseau. », alors que
+l'API tournait et que les identifiants étaient bons. L'adresse est désormais **déduite de l'hôte
+Metro** (`mobile/src/api-url.ts`) : le terminal qui a réussi à charger le bundle sait forcément
+joindre cette machine. Un hôte en loopback est réécrit en `10.0.2.2` sur Android. Corollaire :
+`EXPO_PUBLIC_API_URL` doit rester VIDE en développement, et devient OBLIGATOIRE pour un build.
+
+⚠️ **Un écran qui dépend d'un chargement doit traiter les TROIS états, pas deux.** Le simulateur
+consommait `useRates()` en ignorant son `error`, et son effet de calcul commençait par
+`if (!selected) return`. Taux indisponibles ⇒ aucune devise ⇒ ni résultat, ni erreur, ni
+explication : un écran muet, que l'utilisateur lit comme « la fonctionnalité n'est pas finie ».
+Règle : **chargement / vide-ou-échec / résultat** — jamais de quatrième branche silencieuse.
+
+⚠️ **`.claude/launch.json` du poste n'accepte qu'un `cwd` RELATIF à la racine du workspace Jarvis**
+— or ce projet vit dans `C:/dev/hadjchanges`, HORS de cette racine. Un `cwd` absolu est refusé à la
+validation, et un `cwd` en `../..` l'est aussi ; `cwd: "mobile"` passe la validation mais se résout
+sous la racine Jarvis, où rien n'existe — d'où un `spawn cmd.exe ENOENT` trompeur (Node signale
+ainsi un **répertoire de travail inexistant**, pas un shell manquant). La solution est de ne pas
+passer par le `cwd` : `npm --prefix <dossier absolu> run <script>` exécute le script DANS le dossier
+visé, le `cwd` de la configuration restant `"."`. Les deux entrées `hadjchanges-mobile-web` et
+`hadjchanges-api` sont écrites ainsi.
 Le projet vivant dans `C:\dev`, la configuration `hadjchanges-mobile-web` y est déclarée mais le
 serveur se démarre à la main (`npx expo start --web --port 8081`).

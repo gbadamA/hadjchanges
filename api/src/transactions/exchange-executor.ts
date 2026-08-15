@@ -5,7 +5,8 @@ import { CashService } from '../cash/cash.service';
 import type { AuthUser } from '../common/auth-user';
 import { PrismaService } from '../prisma/prisma.service';
 import { TransactionStateMachine } from './transaction-state-machine';
-import { toTransactionView, transactionInclude, type TransactionView } from './transactions.view';
+import { transactionInclude, type TransactionView } from './transactions.view';
+import { TransactionsGateway } from '../realtime/transactions.gateway';
 
 /**
  * Exécution du change — le moment où l'argent bouge réellement.
@@ -27,6 +28,7 @@ export class ExchangeExecutor {
     private readonly cash: CashService,
     private readonly machine: TransactionStateMachine,
     private readonly audit: AuditService,
+    private readonly realtime: TransactionsGateway,
   ) {}
 
   async execute(transactionId: string, operator: AuthUser, ip?: string): Promise<TransactionView> {
@@ -92,6 +94,6 @@ export class ExchangeExecutor {
       ip,
     });
 
-    return toTransactionView(executed, { withClient: true });
+    return this.realtime.publishAndView(executed, { withClient: true });
   }
 }

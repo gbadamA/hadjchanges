@@ -1945,6 +1945,93 @@ async function main() {
     );
   }
 
+  // ------------------------------------- suivi des transactions en direct --
+  // Le cahier §3.2 exige un suivi « en temps réel ». La diffusion est portée
+  // par `publishAndView` : tout point de mutation qui OUBLIERAIT de l'utiliser
+  // rendrait l'écran du client muet, sans qu'aucun test HTTP ne s'en aperçoive.
+  section('Suivi en temps réel (WebSocket authentifié)');
+  {
+    // socket.io-client vit dans mobile/ : sans installation mobile, on ignore
+    // plutôt que d'échouer — l'API, elle, reste parfaitement vérifiable.
+    let io = null;
+    try {
+      // `import.meta.url` est DÉJÀ une URL file:// : la repasser par
+      // `pathToFileURL` produit un chemin invalide sous Windows.
+      const entry = new URL(
+        '../mobile/node_modules/socket.io-client/build/esm/index.js',
+        import.meta.url,
+      );
+      ({ io } = await import(entry.href));
+    } catch {
+      io = null;
+    }
+
+    if (!io) {
+      skip('diffusion des statuts en direct', 'socket.io-client introuvable (mobile non installé)');
+    } else {
+      const wsUrl = `${BASE}/transactions`;
+
+      // 1. Un statut de transaction est une donnée personnelle : sans jeton,
+      //    la connexion doit être FERMÉE, pas laissée ouverte et muette.
+      const anonyme = io(wsUrl, { transports: ['websocket'] });
+      const refus = await new Promise((resolve) => {
+        anonyme.on('auth:error', () => resolve('refuse'));
+        anonyme.on('connect_error', () => resolve('refuse'));
+        setTimeout(() => resolve('accepte'), 4000);
+      });
+      anonyme.close();
+      check('une connexion sans jeton est refusée', refus === 'refuse', `obtenu « ${refus} »`);
+
+      // 2. Le client abonné reçoit bien le changement de statut.
+      const socket = io(wsUrl, { transports: ['websocket'], auth: { token: client.accessToken } });
+      const connecte = await new Promise((resolve) => {
+        socket.on('connect', () => resolve(true));
+        socket.on('connect_error', () => resolve(false));
+        setTimeout(() => resolve(false), 4000);
+      });
+      check('un client authentifié est accepté', connecte);
+
+      if (connecte) {
+        // ⚠️ On ANNULE une opération existante plutôt que d'en créer une.
+        // Créer consommerait le plafond journalier du client de démo à chaque
+        // passage, et c'est le bloc « de bout en bout » plus haut qui en
+        // paierait le prix — un script qui sabote ses propres vérifications.
+        const mine = await call('GET', '/transactions/mine', { token: client.accessToken });
+        const annulable = (mine.data ?? []).find((row) => row.status === 'CREEE');
+
+        if (!annulable) {
+          skip('diffusion d’un changement de statut', 'aucune opération annulable dans le jeu de données');
+        } else {
+          const attendu = new Promise((resolve) => {
+            socket.on('transaction:updated', resolve);
+            setTimeout(() => resolve(null), 8000);
+          });
+          const annulee = await call('POST', `/transactions/${annulable.id}/cancel`, {
+            token: client.accessToken,
+            body: {},
+          });
+          check('l’annulation est acceptée (200/201)', [200, 201].includes(annulee.status), `reçu ${annulee.status}`);
+
+          const event = await attendu;
+          check(
+            'le changement de statut est diffusé au client',
+            event !== null && event.id === annulable.id,
+            event === null ? 'aucun événement reçu' : `reçu ${event.id}`,
+          );
+          check('le statut diffusé est bien le nouveau', event?.status === 'ANNULEE', String(event?.status));
+          check(
+            'la charge diffusée porte la timeline complète',
+            Array.isArray(event?.timeline) && event.timeline.length > 0,
+          );
+          // Le socket est nominatif : y faire transiter la fiche client serait
+          // une fuite gratuite, le client sachant déjà qui il est.
+          check('la charge diffusée n’expose pas le bloc client', event?.client === undefined);
+        }
+      }
+      socket.close();
+    }
+  }
+
   // ------------------------------------------------------------------ bilan --
   console.log(`\n${'='.repeat(60)}`);
   console.log(`${passed} vérifications passées · ${failed} échouées · ${skipped} ignorées`);

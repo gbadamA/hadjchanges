@@ -25,6 +25,7 @@ import { SettingsService } from '../settings/settings.service';
 import { TransactionStateMachine } from './transaction-state-machine';
 import type { CancelInput, CreateTransactionInput, TransactionListInput } from './transactions.schemas';
 import { toTransactionView, transactionInclude, type TransactionView } from './transactions.view';
+import { TransactionsGateway } from '../realtime/transactions.gateway';
 
 @Injectable()
 export class TransactionsService {
@@ -38,6 +39,7 @@ export class TransactionsService {
     private readonly pdf: ReceiptPdfService,
     private readonly storage: StorageService,
     private readonly compliance: ComplianceService,
+    private readonly realtime: TransactionsGateway,
   ) {}
 
   /**
@@ -125,7 +127,7 @@ export class TransactionsService {
     // avant que quiconque ait pu regarder.
     await this.compliance.screen(transaction);
 
-    return toTransactionView(transaction);
+    return this.realtime.publishAndView(transaction);
   }
 
   async mine(client: AuthUser, status?: TransactionStatus): Promise<TransactionView[]> {
@@ -203,7 +205,7 @@ export class TransactionsService {
       after: { status: TransactionStatus.ANNULEE, reason: updated.cancelReason },
       ip,
     });
-    return toTransactionView(updated, { withClient: actor.role !== Role.CLIENT });
+    return this.realtime.publishAndView(updated, { withClient: actor.role !== Role.CLIENT });
   }
 
   /** L'argent est disponible : le client peut venir le chercher. */
@@ -315,7 +317,7 @@ export class TransactionsService {
       after: { status: to },
       ip,
     });
-    return toTransactionView(updated, { withClient: true });
+    return this.realtime.publishAndView(updated, { withClient: true });
   }
 
   /** Prix garanti : on relit le devis, on ne recalcule rien. */

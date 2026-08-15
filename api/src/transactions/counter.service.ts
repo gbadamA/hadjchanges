@@ -19,7 +19,8 @@ import { RatesService } from '../rates/rates.service';
 import { SettingsService } from '../settings/settings.service';
 import { ExchangeExecutor } from './exchange-executor';
 import type { CounterTransactionInput } from './counter.schemas';
-import { toTransactionView, transactionInclude, type TransactionView } from './transactions.view';
+import { transactionInclude, type TransactionView } from './transactions.view';
+import { TransactionsGateway } from '../realtime/transactions.gateway';
 
 @Injectable()
 export class CounterService {
@@ -32,6 +33,7 @@ export class CounterService {
     private readonly settings: SettingsService,
     private readonly passwords: PasswordService,
     private readonly audit: AuditService,
+    private readonly realtime: TransactionsGateway,
   ) {}
 
   /**
@@ -111,7 +113,7 @@ export class CounterService {
       include: transactionInclude,
     });
 
-    return toTransactionView(closed, { withClient: true });
+    return this.realtime.publishAndView(closed, { withClient: true });
   }
 
   /**

@@ -1,3 +1,4 @@
+import { API_BASE_URL } from './api-url';
 import type {
   Agency,
   DepositMethod,
@@ -56,14 +57,12 @@ export interface CreateTransactionInput {
  * quand l'URL, l'authentification ou la gestion d'erreur changent, ça se change
  * ici et nulle part ailleurs.
  *
- * ⚠️ `localhost` désigne le TÉLÉPHONE, pas le PC. En développement sur appareil
- * réel, renseigner l'IP Wi-Fi du poste dans `mobile/.env` :
- *   EXPO_PUBLIC_API_URL="http://192.168.1.10:3061"
+ * L'adresse est **déduite de l'hôte Metro** (voir `api-url.ts`) : le téléphone
+ * ou l'émulateur qui a chargé le bundle sait forcément joindre cette machine.
+ * Plus besoin d'aller chercher son IP Wi-Fi à chaque changement de réseau.
+ * `EXPO_PUBLIC_API_URL` reste prioritaire pour viser un autre serveur.
  */
-export const BASE_URL = (process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3061').replace(
-  /\/$/,
-  '',
-);
+export const BASE_URL = API_BASE_URL;
 
 export class ApiError extends Error {
   constructor(
