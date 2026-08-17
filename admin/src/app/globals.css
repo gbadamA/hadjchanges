@@ -9,18 +9,18 @@
  * Valeurs = `admin/src/lib/tokens.ts` → `brand`.
  */
 :root {
-  --c-primary: 15 61 107; /* #0F3D6B */
-  --c-primary-hover: 11 46 82; /* #0B2E52 */
-  --c-secondary: 201 162 39; /* #C9A227 */
-  --c-secondary-hover: 169 135 28; /* #A9871C */
-  --c-tertiary: 46 124 184; /* #2E7CB8 */
+  --c-primary: 27 42 143; /* #1B2A8F — bleu du logo */
+  --c-primary-hover: 17 26 99; /* #111A63 */
+  --c-secondary: 216 30 39; /* #D81E27 — rouge du logo */
+  --c-secondary-hover: 163 20 28; /* #A3141C */
+  --c-tertiary: 71 87 201; /* #4757C9 */
 }
 
 /* Le thème sombre garde les mêmes teintes de marque : ce sont les NEUTRES qui
-   changent (classes `dark:` du preset), pas l'identité. L'azur est juste
+   changent (classes `dark:` du preset), pas l'identité. Le bleu clair est juste
    éclairci pour rester lisible sur fond nuit. */
 .dark {
-  --c-tertiary: 90 160 214;
+  --c-tertiary: 130 143 232;
 }
 
 @layer base {

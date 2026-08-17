@@ -56,7 +56,7 @@ export default function Accueil(): ReactNode {
           <Button
             label="Changer de l’argent"
             onPress={() => router.push('/operation/nouvelle')}
-            variant="gold"
+            variant="accent"
           />
           {/* Le simulateur reste offert, mais en second : c'est l'outil de
               celui qui regarde, pas de celui qui vient changer. */}
@@ -167,10 +167,10 @@ const styles = StyleSheet.create({
     minWidth: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: C.gold,
+    backgroundColor: C.accent,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 5,
   },
-  dotText: { ...T.caption, color: C.onGold, fontVariant: ['tabular-nums'] },
+  dotText: { ...T.caption, color: C.onAccent, fontVariant: ['tabular-nums'] },
 });

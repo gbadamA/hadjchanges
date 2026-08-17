@@ -470,7 +470,7 @@ export default function NouvelleOperation(): ReactNode {
       <Button
         label={busy ? 'Création…' : libre ? 'Lancer mon opération' : 'Confirmer l’opération'}
         onPress={() => void confirm()}
-        variant="gold"
+        variant="accent"
         disabled={busy || bloquant !== null}
       />
       {bloquant ? (

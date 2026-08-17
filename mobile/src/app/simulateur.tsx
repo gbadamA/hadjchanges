@@ -234,7 +234,7 @@ export default function Simulateur(): ReactNode {
               </Text>
             </View>
 
-            <Ionicons name="arrow-down" size={18} color={C.goldDeep} />
+            <Ionicons name="arrow-down" size={18} color={C.accentDeep} />
 
             <View style={styles.leg}>
               <Text style={T.caption}>Vous recevez</Text>
@@ -257,7 +257,7 @@ export default function Simulateur(): ReactNode {
           {locked ? (
             <>
               <View style={styles.lockedBox}>
-                <Ionicons name="lock-closed" size={16} color={C.goldDeep} />
+                <Ionicons name="lock-closed" size={16} color={C.accentDeep} />
                 <Text style={[T.label, styles.lockedText]}>
                   {remaining
                     ? `Taux garanti ${remaining} · ${locked.reference}`
@@ -277,7 +277,7 @@ export default function Simulateur(): ReactNode {
             <Button
               label={locking ? 'Verrouillage…' : 'Verrouiller ce taux 30 min'}
               onPress={() => void onLock()}
-              variant="gold"
+              variant="accent"
               disabled={locking || computing}
             />
           )}
@@ -356,11 +356,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: S.sm,
-    backgroundColor: C.goldSoft,
+    backgroundColor: C.accentSoft,
     borderRadius: R.md,
     padding: S.md,
   },
-  lockedText: { color: C.goldDeep, flex: 1 },
+  lockedText: { color: C.accentDeep, flex: 1 },
   watch: { flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingTop: S.xs },
   watchText: { color: C.navy, flex: 1 },
 });

@@ -520,6 +520,28 @@ simulateur, le verrou et (bientôt) l'exécution de la transaction l'appellent t
 recopier cette arithmétique dans un écran ou un service : deux calculs qui divergent, c'est un écart
 de caisse à la fin du mois. **La commission se prélève toujours sur la jambe en XOF.**
 
+⚠️ **Le poste est à la LIMITE pour un build Android natif : brider, ou ça meurt.** Quatre échecs
+successifs, trois causes distinctes — délais réseau sur `dl.google.com` (défaut 10 s, trop court),
+disque saturé (`Espace insuffisant` sur `libreanimated.so`), puis `LLVM ERROR: out of memory` et un
+démon Gradle tué par le système. Avec 8 cœurs et souvent moins de 4 Go de RAM libre, Gradle lance
+trop de `clang` en parallèle, et Metro tourne EN MÊME TEMPS pendant le bundling. Les réglages qui
+font passer le build sont dans `android/gradle.properties` : `org.gradle.parallel=false`,
+`org.gradle.workers.max=2`, tas à `-Xmx1536m`, délais HTTP à 180 s, et
+`reactNativeArchitectures=arm64-v8a` seul (les 4 architectures saturent le disque). Lancer avec
+`--no-daemon --max-workers=1` et `CMAKE_BUILD_PARALLEL_LEVEL=1`. Conséquence assumée : l'APK ne
+tourne PAS sur un émulateur x86.
+
+⚠️ **`expo-splash-screen` sans image casse l'édition de liens des ressources.** Passer `resizeMode`
+au plugin sans `image` fait générer `<item name="windowSplashScreenAnimatedIcon">@drawable/
+splashscreen_logo</item>` dans `styles.xml` alors que le drawable n'est jamais produit : `error:
+resource drawable/splashscreen_logo not found`. Le projet n'ayant aucun dossier `assets`, ne passer
+que `backgroundColor`. ⚠️ `expo prebuild` SANS `--clean` ne régénère pas `styles.xml`, et efface
+`android/local.properties` à chaque passage — les deux sont à revérifier après tout prebuild.
+
+⚠️ **Vérifier la signature d'un APK avec `apksigner`, jamais en cherchant `META-INF/*.RSA`.** Ces
+entrées relèvent du signage v1 ; Android utilise un bloc de signature v2/v3 invisible dans la liste
+des entrées du zip. Chercher les fichiers conclut « non signé » sur un APK parfaitement signé.
+
 ⚠️ **Construire un APK : trois choses obligatoires, et deux se voient seulement à l'exécution.**
 1. `EXPO_PUBLIC_API_URL` doit être renseignée AVANT le build. Un APK autonome n'a pas de Metro, donc
    l'auto-détection de `src/api-url.ts` ne s'applique pas : sans cette variable l'app retombe sur

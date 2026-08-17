@@ -16,9 +16,9 @@
 /** Dégradé signature (135°) : bannières, en-têtes de page, boutons primaires. */
 export const gradient = {
   /** Bleu nuit → azur → or. Le liseré doré ne doit occuper que la fin de course. */
-  diplomatic: ["#0B2A4A", "#14507F", "#C9A227"] as const,
+  diplomatic: ["#111A63", "#2C3CB5", "#D81E27"] as const,
   /** Variante sobre (sans or) pour les grandes surfaces et les fonds de section. */
-  deep: ["#08203A", "#14507F"] as const,
+  deep: ["#08203A", "#2C3CB5"] as const,
   angle: 135,
 };
 
@@ -28,14 +28,14 @@ export const gradient = {
  *    Le bleu `primary` ne porte QUE du texte blanc.
  */
 export const brand = {
-  primary: "#0F3D6B", // bleu diplomatique — actions
+  primary: "#1B2A8F", // bleu diplomatique — actions
   primaryHover: "#0B2E52",
-  secondary: "#C9A227", // or — montants clés, filets, badges
-  secondaryHover: "#A9871C",
-  tertiary: "#2E7CB8", // azur — liens, focus, illustrations
+  secondary: "#D81E27", // or — montants clés, filets, badges
+  secondaryHover: "#A3141C",
+  tertiary: "#4757C9", // azur — liens, focus, illustrations
   success: "#12B76A",
   warning: "#F59E0B",
-  danger: "#DC2626",
+  danger: "#B3261E",
 };
 
 /** Neutres par thème — teintés très légèrement bleu pour l'unité chromatique. */
@@ -65,7 +65,7 @@ export const palette = {
  */
 export const trend = {
   up: "#12B76A",
-  down: "#DC2626",
+  down: "#B3261E",
   flat: "#5A6B7D",
 } as const;
 
@@ -76,10 +76,10 @@ export const trend = {
 export const statusColors = {
   CREEE: "#5A6B7D", // gris — en attente d'action du client
   RECU_SOUMIS: "#F59E0B", // ambre — à traiter par l'opérateur
-  RECU_VALIDE: "#2E7CB8", // azur — contrôlé, change à exécuter
-  RECU_REJETE: "#DC2626", // rouge — à redéposer
-  CHANGE_EXECUTE: "#0F3D6B", // bleu — opération faite
-  PRETE_POUR_RETRAIT: "#C9A227", // or — la valeur est disponible
+  RECU_VALIDE: "#4757C9", // bleu-indigo — contrôlé, change à exécuter
+  RECU_REJETE: "#B3261E", // rouge — à redéposer
+  CHANGE_EXECUTE: "#1B2A8F", // bleu — opération faite
+  PRETE_POUR_RETRAIT: "#D81E27", // rouge du logo — la valeur est disponible
   CLOTUREE: "#12B76A", // vert — terminé
   ANNULEE: "#8A97A6", // gris clair — sans suite
 } as const;
@@ -90,7 +90,7 @@ export const depositColors = {
   MTN_MOMO: "#FFCB05",
   MOOV_MONEY: "#0A5FBF",
   WAVE: "#1DC8F2",
-  CARTE_BANCAIRE: "#0F3D6B",
+  CARTE_BANCAIRE: "#1B2A8F",
   ESPECES_AGENCE: "#12B76A",
 } as const;
 

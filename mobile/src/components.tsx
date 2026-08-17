@@ -86,7 +86,7 @@ function Quote({
 
 const styles = StyleSheet.create({
   card: { gap: S.md },
-  highlight: { borderColor: C.gold, backgroundColor: C.goldSoft },
+  highlight: { borderColor: C.accent, backgroundColor: C.accentSoft },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   identity: { flexDirection: 'row', alignItems: 'center', gap: S.md, flexShrink: 1 },
   symbolBubble: {

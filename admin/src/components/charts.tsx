@@ -81,13 +81,13 @@ export function AreaChart({ points }: { points: SeriesPoint[] }) {
       >
         <defs>
           <linearGradient id={`${id}-fill`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#14507F" stopOpacity="0.35" />
-            <stop offset="100%" stopColor="#14507F" stopOpacity="0" />
+            <stop offset="0%" stopColor="#2C3CB5" stopOpacity="0.35" />
+            <stop offset="100%" stopColor="#2C3CB5" stopOpacity="0" />
           </linearGradient>
           <linearGradient id={`${id}-line`} x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="#0B2A4A" />
-            <stop offset="70%" stopColor="#2E7CB8" />
-            <stop offset="100%" stopColor="#C9A227" />
+            <stop offset="0%" stopColor="#111A63" />
+            <stop offset="70%" stopColor="#4757C9" />
+            <stop offset="100%" stopColor="#D81E27" />
           </linearGradient>
         </defs>
 
@@ -120,7 +120,7 @@ export function AreaChart({ points }: { points: SeriesPoint[] }) {
 
         {/* Le pic est marqué : c'est le seul point qu'on cherche des yeux. */}
         {max > 0 ? (
-          <circle cx={x(peak)} cy={y(values[peak])} r={4.5} fill="#C9A227" className="animate-fill-in" />
+          <circle cx={x(peak)} cy={y(values[peak])} r={4.5} fill="#D81E27" className="animate-fill-in" />
         ) : null}
       </svg>
 
@@ -140,7 +140,7 @@ export interface BarDatum {
 }
 
 /** Barres horizontales : le classement se lit de haut en bas, sans effort. */
-export function BarList({ data, accent = '#0F3D6B' }: { data: BarDatum[]; accent?: string }) {
+export function BarList({ data, accent = '#1B2A8F' }: { data: BarDatum[]; accent?: string }) {
   if (data.length === 0) return <EmptyChart message="Aucune donnée sur la période." />;
   const max = Math.max(...data.map((datum) => datum.value), 1);
 
@@ -159,7 +159,7 @@ export function BarList({ data, accent = '#0F3D6B' }: { data: BarDatum[]; accent
               className="h-full origin-left rounded-full animate-rise"
               style={{
                 width: `${Math.max((datum.value / max) * 100, 2)}%`,
-                background: `linear-gradient(90deg, ${accent}, #2E7CB8)`,
+                background: `linear-gradient(90deg, ${accent}, #4757C9)`,
                 animationDelay: `${index * 60}ms`,
                 transform: 'scaleX(1)',
               }}

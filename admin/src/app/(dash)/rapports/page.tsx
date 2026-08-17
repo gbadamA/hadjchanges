@@ -24,7 +24,7 @@ const DEPOSIT_COLOR: Record<string, string> = {
   MTN_MOMO: '#FFCB05',
   MOOV_MONEY: '#0A5FBF',
   WAVE: '#1DC8F2',
-  CARTE_BANCAIRE: '#0F3D6B',
+  CARTE_BANCAIRE: '#1B2A8F',
   ESPECES_AGENCE: '#12B76A',
 };
 
@@ -220,7 +220,7 @@ export default function RapportsPage() {
             <section className="surface lift animate-fade-up p-6" style={{ animationDelay: '300ms' }}>
               <h2 className="mb-4 font-display text-h2">Agences</h2>
               <BarList
-                accent="#0B2A4A"
+                accent="#111A63"
                 data={report.byAgency.map((row) => ({
                   label: row.name,
                   value: Number(row.volumeXof),

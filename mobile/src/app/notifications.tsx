@@ -129,7 +129,7 @@ export default function NotificationsScreen(): ReactNode {
             <>
               <View style={styles.row}>
                 <Text style={T.title}>{row.title}</Text>
-                {unread ? <Badge label="nouveau" color={C.gold} soft={C.goldSoft} /> : null}
+                {unread ? <Badge label="nouveau" color={C.accent} soft={C.accentSoft} /> : null}
               </View>
               <Text style={T.bodyMute}>{row.body}</Text>
               <Text style={T.caption}>
@@ -168,7 +168,7 @@ const styles = StyleSheet.create({
   body: { padding: S.lg, gap: S.md, paddingTop: S.huge },
   head: { flexDirection: 'row', alignItems: 'center', gap: S.md },
   card: { gap: S.xs, borderRadius: R.md },
-  unread: { borderLeftWidth: 3, borderLeftColor: C.gold },
+  unread: { borderLeftWidth: 3, borderLeftColor: C.accent },
   watched: { gap: S.sm },
   alertRow: { flexDirection: 'row', alignItems: 'center', gap: S.md },
   alertText: { flex: 1, gap: 2 },

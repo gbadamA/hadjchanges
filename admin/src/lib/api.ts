@@ -5,10 +5,26 @@
  * et le rafraîchissement s'appuie sur le refresh token gardé par le contexte
  * d'authentification.
  */
-export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3061').replace(
-  /\/$/,
-  '',
-);
+/**
+ * Adresse de l'API.
+ *
+ * ⚠️ Le schéma est complété s'il manque. Render expose l'hôte d'un service SANS
+ * `https://` (`hadjchanges-api.onrender.com`) : pris tel quel, on obtiendrait
+ * une URL relative et tous les appels partiraient vers le tableau de bord
+ * lui-même. En local, `localhost` reste en http.
+ */
+const withScheme = (value: string): string => {
+  if (/^https?:\/\//.test(value)) return value;
+  // Réseau local (localhost, 10.x, 172.16-31.x, 192.168.x) : ces adresses ne
+  // portent jamais de certificat, donc http. Tout le reste est supposé https.
+  const local =
+    /^(localhost|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:|$)/.test(value);
+  return `${local ? 'http' : 'https'}://${value}`;
+};
+
+export const API_URL = withScheme(
+  (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3061').trim(),
+).replace(/\/$/, '');
 
 export class ApiError extends Error {
   constructor(

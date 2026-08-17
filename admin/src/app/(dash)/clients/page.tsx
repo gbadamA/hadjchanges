@@ -303,7 +303,7 @@ function Gauge({ title, data }: { title: string; data: LimitsView['daily'] }) {
   const used = Number(data.usedXof);
   const limit = Number(data.limitXof);
   const ratio = limit > 0 ? Math.min(used / limit, 1) : 0;
-  const tone = ratio >= 0.9 ? '#DC2626' : ratio >= 0.7 ? '#F59E0B' : '#12B76A';
+  const tone = ratio >= 0.9 ? '#B3261E' : ratio >= 0.7 ? '#F59E0B' : '#12B76A';
 
   return (
     <div className="rounded-sm bg-light-surface-alt p-4 dark:bg-dark-surface-alt">

@@ -1,0 +1,110 @@
+# Déploiement HadjChanges sur Render — API et tableau de bord, en plan GRATUIT.
+#
+# Render le lit et crée les deux services d'un coup (Blueprint). Les valeurs
+# marquées `sync: false` sont volontairement absentes : ce sont des secrets, ils
+# se saisissent dans l'interface Render et n'ont rien à faire dans un dépôt.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# ⚠️ CE QUE LE PLAN GRATUIT IMPLIQUE — à connaître avant de s'en étonner
+#
+# 1. LA BASE N'EST PAS CHEZ RENDER, ET C'EST VOULU. Le PostgreSQL gratuit de
+#    Render EXPIRE au bout de 90 jours et emporte les données avec lui : c'est
+#    ce qui a mis PREVENTIX 360 hors service. `DATABASE_URL` pointe donc vers un
+#    PostgreSQL externe gratuit qui, lui, ne s'autodétruit pas — Supabase (déjà
+#    utilisé sur plusieurs projets ITEKT) ou Neon.
+#
+# 2. LE SERVICE S'ENDORT après ~15 min sans trafic, et met ~50 s à se réveiller.
+#    Conséquences vécues par l'utilisateur : la première requête après une
+#    pause est très lente, et les WebSockets du suivi temps réel sont COUPÉS
+#    pendant la veille. Le mobile se reconnecte seul et recharge ses données à
+#    la reconnexion (`useTransactionUpdates`) — sans quoi un statut changé
+#    pendant la veille serait perdu sans que rien ne le signale.
+#
+# 3. LE DISQUE EST ÉPHÉMÈRE. Tout fichier écrit localement disparaît à chaque
+#    redéploiement ET à chaque réveil. Le stockage S3 externe n'est donc pas une
+#    option de confort : sans lui, les pièces d'identité et les reçus déposés
+#    par les clients seraient PERDUS. Cloudflare R2 offre 10 Go gratuits.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ────────────────────────────────────────────────────────────────── API ──
+  - type: web
+    name: hadjchanges-api
+    runtime: docker
+    dockerfilePath: ./api/Dockerfile
+    dockerContext: ./api
+    plan: free
+    region: frankfurt
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # PostgreSQL externe (Supabase ou Neon) — voir le point 1 ci-dessus.
+      # Format : postgresql://user:motdepasse@hote:5432/base?schema=public
+      - key: DATABASE_URL
+        sync: false
+      # Générés par Render : deux secrets DISTINCTS, jamais le même.
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      # Le tableau de bord est la SEULE origine web autorisée à appeler l'API.
+      # Le mobile n'envoie pas d'en-tête `Origin` : il n'est pas concerné.
+      # Render fournit l'hôte SANS schéma ; l'API complète le `https://`
+      # manquant (api/src/config/env.ts).
+      - key: CORS_ORIGINS
+        fromService:
+          name: hadjchanges-admin
+          type: web
+          property: host
+      # Stockage des pièces d'identité et des reçus — voir le point 3.
+      - key: STORAGE_DRIVER
+        value: s3
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_REGION
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY
+        sync: false
+      - key: S3_SECRET_KEY
+        sync: false
+      # Courriel sortant — un vrai relais (Brevo, SendGrid, Mailgun…).
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: MAIL_FROM
+        value: HadjChanges <no-reply@hadjchanges.ci>
+      # Notifications WhatsApp / SMS : facultatives, l'API démarre sans.
+      - key: WHATSAPP_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_ID
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM
+        sync: false
+
+  # ──────────────────────────────────────────────────── tableau de bord ──
+  - type: web
+    name: hadjchanges-admin
+    runtime: docker
+    dockerfilePath: ./admin/Dockerfile
+    dockerContext: ./admin
+    plan: free
+    region: frankfurt
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # ⚠️ Figée à la CONSTRUCTION (variable NEXT_PUBLIC_*), pas au démarrage :
+      # changer cette valeur exige de RECONSTRUIRE le service, pas seulement de
+      # le redémarrer.
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          name: hadjchanges-api
+          type: web
+          property: host

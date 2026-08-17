@@ -61,8 +61,20 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   }
   return {
     ...parsed.data,
+    // ⚠️ Même raison que côté tableau de bord : Render fournit l'hôte sans
+    // schéma, alors que l'en-tête `Origin` d'un navigateur en porte toujours
+    // un. Sans cette normalisation, AUCUNE origine ne correspondrait et le
+    // tableau de bord se verrait refuser chaque appel.
     corsOrigins: parsed.data.CORS_ORIGINS.split(',')
       .map((origin) => origin.trim())
-      .filter(Boolean),
+      .filter(Boolean)
+      .map((origin) => {
+        if (/^https?:\/\//.test(origin)) return origin;
+        // Réseau local (localhost, 10.x, 172.16-31.x, 192.168.x) : ces adresses ne
+  // portent jamais de certificat, donc http. Tout le reste est supposé https.
+  const local =
+    /^(localhost|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:|$)/.test(origin);
+        return `${local ? 'http' : 'https'}://${origin}`;
+      }),
   };
 }

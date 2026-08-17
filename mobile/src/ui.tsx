@@ -133,10 +133,10 @@ export function Button({
 }: {
   label: string;
   onPress: () => void;
-  variant?: 'primary' | 'gold' | 'ghost';
+  variant?: 'primary' | 'accent' | 'ghost';
   disabled?: boolean;
 }): ReactNode {
-  const gradient = variant === 'gold' ? G.gold : G.navy;
+  const gradient = variant === 'accent' ? G.accent : G.navy;
   if (variant === 'ghost') {
     return (
       <Pressable
@@ -163,9 +163,9 @@ export function Button({
         colors={gradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={[styles.button, variant === 'gold' ? shadow.gold : shadow.navy]}
+        style={[styles.button, variant === 'accent' ? shadow.accent : shadow.navy]}
       >
-        <Text style={[styles.buttonLabel, variant === 'gold' && { color: C.onGold }]}>{label}</Text>
+        <Text style={[styles.buttonLabel, variant === 'accent' && { color: C.onAccent }]}>{label}</Text>
       </LinearGradient>
     </Pressable>
   );

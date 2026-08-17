@@ -8,10 +8,11 @@ import type { TextStyle, ViewStyle } from 'react-native';
 // La PALETTE, elle, est celle du dashboard — bleu diplomatique & or — pour que
 // les deux surfaces du produit se reconnaissent au premier coup d'œil.
 //
-// Identité « confiance & valeur » : bleu nuit profond comme marque (une
-// signature, un guichet, un coffre), or comme accent RARE (montants clés, CTA,
-// badges de valeur). L'or ne porte jamais de texte clair et ne couvre jamais
-// une grande surface.
+// Palette reprise du LOGO de la structure (FITYA TRANSPORT LOGISTICS) : bleu
+// royal comme marque, rouge comme accent RARE (montants clés, CTA, badges de
+// valeur). Le rouge porte du texte BLANC — contrairement à l'or qu'il remplace,
+// qui exigeait du texte sombre — et ne couvre jamais une grande surface : sur
+// un produit financier, le rouge en aplat se lit comme une alerte.
 //
 // ⚠️ Aucune couleur en dur ailleurs dans le code mobile. Tout part d'ici.
 // ============================================================================
@@ -19,51 +20,51 @@ import type { TextStyle, ViewStyle } from 'react-native';
 export const C = {
   // Fonds
   bg: '#F5F8FC', // gris bleuté perle
-  bgDeep: '#0B2A4A', // bleu nuit (headers immersifs, accueil)
+  bgDeep: '#111A63', // bleu royal profond (headers immersifs, accueil)
   surface: '#FFFFFF',
-  surface2: '#EAF1F8',
-  surface3: '#DFE9F4',
-  line: '#D8E3EF',
-  lineSoft: '#E8F0F8',
+  surface2: '#EDEFF9',
+  surface3: '#E0E4F4',
+  line: '#DADEF0',
+  lineSoft: '#EBEEF9',
 
   // Texte
-  ink: '#0B1A2A',
-  inkDim: '#3E5162',
-  textMute: '#5A6B7D',
+  ink: '#0E1330',
+  inkDim: '#454C74',
+  textMute: '#666C8C',
   onDark: '#FFFFFF',
-  onDarkDim: '#A9C2DC',
+  onDarkDim: '#B6BCE6',
 
-  // Marque : bleu diplomatique
-  navy: '#0F3D6B',
-  navyDeep: '#0B2A4A',
-  navySoft: '#E4EDF7',
-  navyBright: '#14507F',
+  // Marque : bleu royal du logo
+  navy: '#1B2A8F',
+  navyDeep: '#111A63',
+  navySoft: '#E8EAF8',
+  navyBright: '#2C3CB5',
 
   // Azur : liens, focus, illustrations
-  azure: '#2E7CB8',
-  azureSoft: '#E3F0FA',
+  azure: '#4757C9',
+  azureSoft: '#E9ECFA',
 
-  // Accent : or (rare — montants, CTA de valeur, badges)
-  gold: '#C9A227',
-  goldDeep: '#A9871C',
-  goldSoft: '#FBF3DC',
-  onGold: '#0B1A2A', // ⚠️ l'or ne porte QUE du texte sombre
+  // Accent : rouge du logo (rare — montants, CTA de valeur, badges)
+  accent: '#D81E27',
+  accentDeep: '#A3141C',
+  accentSoft: '#FDEAEB',
+  onAccent: '#FFFFFF', // ⚠️ le rouge porte du texte CLAIR
 
   // Sémantique
   ok: '#12B76A',
   okSoft: '#E3F7EE',
   warn: '#F59E0B',
   warnSoft: '#FEF3DC',
-  info: '#2E7CB8',
-  infoSoft: '#E3F0FA',
-  stop: '#DC2626',
-  stopSoft: '#FCE9E9',
+  info: '#4757C9',
+  infoSoft: '#E9ECFA',
+  stop: '#B3261E',
+  stopSoft: '#FBE6E4',
 };
 
 /**
  * Variation d'un taux — convention métier, pas esthétique.
  * Vert = monte, rouge = baisse, gris = stable. Ne jamais inverser, et ne jamais
- * y mettre l'or (l'or dit « valeur », pas « direction »).
+ * y mettre le rouge de marque (il dit « valeur », pas « direction »).
  */
 export const TREND = {
   up: C.ok,
@@ -76,14 +77,14 @@ export const TREND = {
  * (`admin/src/lib/tokens.ts` → statusColors) : un statut a UNE couleur, partout.
  */
 export const STATUS = {
-  CREEE: '#5A6B7D',
-  RECU_SOUMIS: '#F59E0B',
-  RECU_VALIDE: '#2E7CB8',
-  RECU_REJETE: '#DC2626',
-  CHANGE_EXECUTE: '#0F3D6B',
-  PRETE_POUR_RETRAIT: '#C9A227',
-  CLOTUREE: '#12B76A',
-  ANNULEE: '#8A97A6',
+  CREEE: '#5A6B7D', // gris — en attente d'action du client
+  RECU_SOUMIS: '#F59E0B', // ambre — à traiter par l'opérateur
+  RECU_VALIDE: '#4757C9', // bleu-indigo — contrôlé, change à exécuter
+  RECU_REJETE: '#B3261E', // rouge sombre — à redéposer
+  CHANGE_EXECUTE: '#1B2A8F', // bleu du logo — opération faite
+  PRETE_POUR_RETRAIT: '#D81E27', // rouge du logo — la valeur est disponible
+  CLOTUREE: '#12B76A', // vert — terminé
+  ANNULEE: '#8A97A6', // gris clair — sans suite
 } as const;
 
 /** Ce que chaque statut veut dire pour le client, en une phrase. */
@@ -101,13 +102,13 @@ export const STATUS_HINT: Record<keyof typeof STATUS, string> = {
 // Dégradés (headers, CTA, médaillons, cartes de devise).
 export const G = {
   /** Dégradé signature 135° — bannières et boutons primaires. */
-  diplomatic: ['#0B2A4A', '#14507F', '#C9A227'] as const,
-  /** Variante sobre, sans or — grandes surfaces et fonds de section. */
-  deep: ['#08203A', '#14507F'] as const,
-  navy: ['#14507F', '#0F3D6B', '#0B2A4A'] as const,
-  gold: ['#E7C766', '#C9A227', '#A9871C'] as const,
-  azure: ['#4A9BD4', '#2E7CB8'] as const,
-  night: ['#0B2A4A', '#123A63'] as const,
+  diplomatic: ['#111A63', '#1B2A8F', '#D81E27'] as const,
+  /** Variante sobre, sans rouge — grandes surfaces et fonds de section. */
+  deep: ['#0B1250', '#1B2A8F'] as const,
+  navy: ['#2C3CB5', '#1B2A8F', '#111A63'] as const,
+  accent: ['#EE5A61', '#D81E27', '#A3141C'] as const,
+  azure: ['#5C6BD8', '#4757C9'] as const,
+  night: ['#111A63', '#182270'] as const,
 };
 
 // Rayons.
@@ -184,7 +185,7 @@ export const shadow = {
     elevation: 12,
   } as ViewStyle,
   // CTA or avec glow — réservé aux actions qui engagent de la valeur.
-  gold: {
+  accent: {
     shadowColor: '#A9871C',
     shadowOpacity: 0.34,
     shadowRadius: 18,

@@ -26,19 +26,19 @@ const config: Config = {
         tertiary: "rgb(var(--c-tertiary) / <alpha-value>)",
         success: "#12B76A",
         warning: "#F59E0B",
-        danger: "#DC2626",
+        danger: "#B3261E",
         // Dégradé signature
-        azure: { start: "#0B2A4A", mid: "#14507F", end: "#C9A227" },
+        azure: { start: "#111A63", mid: "#1B2A8F", end: "#D81E27" },
         // Variation de taux — sens métier, voir tokens.ts
-        trend: { up: "#12B76A", down: "#DC2626", flat: "#5A6B7D" },
+        trend: { up: "#12B76A", down: "#B3261E", flat: "#5A6B7D" },
         // Statuts de transaction
         status: {
           creee: "#5A6B7D",
           "recu-soumis": "#F59E0B",
-          "recu-valide": "#2E7CB8",
-          "recu-rejete": "#DC2626",
-          execute: "#0F3D6B",
-          prete: "#C9A227",
+          "recu-valide": "#4757C9",
+          "recu-rejete": "#B3261E",
+          execute: "#1B2A8F",
+          prete: "#D81E27",
           cloturee: "#12B76A",
           annulee: "#8A97A6",
         },
@@ -80,14 +80,14 @@ const config: Config = {
         caption: ["13px", { lineHeight: "18px" }],
       },
       backgroundImage: {
-        diplomatic: "linear-gradient(135deg, #0B2A4A 0%, #14507F 58%, #C9A227 100%)",
-        "diplomatic-deep": "linear-gradient(135deg, #08203A 0%, #14507F 100%)",
-        gold: "linear-gradient(135deg, #C9A227 0%, #E7C766 50%, #A9871C 100%)",
+        diplomatic: "linear-gradient(135deg, #111A63 0%, #2C3CB5 58%, #D81E27 100%)",
+        "diplomatic-deep": "linear-gradient(135deg, #08203A 0%, #2C3CB5 100%)",
+        accent: "linear-gradient(135deg, #D81E27 0%, #EE5A61 50%, #A3141C 100%)",
       },
       boxShadow: {
-        card: "0 8px 24px rgba(15, 61, 107, 0.12)",
-        glow: "0 0 20px rgba(15, 61, 107, 0.35)",
-        gold: "0 0 18px rgba(201, 162, 39, 0.35)",
+        card: "0 8px 24px rgba(27, 42, 143, 0.12)",
+        glow: "0 0 20px rgba(27, 42, 143, 0.35)",
+        accent: "0 0 18px rgba(216, 30, 39, 0.35)",
       },
       keyframes: {
         "fade-up": {

@@ -16,10 +16,24 @@ import type { Transaction } from './models';
  * dépendance, une fonction recréée à chaque rendu fermerait et rouvrirait le
  * socket en boucle — le suivi « temps réel » ne recevrait jamais rien.
  */
-export function useTransactionUpdates(onUpdate: (transaction: Transaction) => void): void {
+export function useTransactionUpdates(
+  onUpdate: (transaction: Transaction) => void,
+  /**
+   * Appelé après une RE-connexion du socket, jamais à la première.
+   *
+   * ⚠️ Indispensable en hébergement gratuit : le service s'endort après ~15 min
+   * sans trafic, ce qui coupe le socket. Les changements de statut survenus
+   * pendant la veille ne sont diffusés à personne — sans rechargement au
+   * réveil, l'écran affiche un statut périmé en donnant l'impression d'être à
+   * jour, ce qui est pire qu'un écran visiblement figé.
+   */
+  onReconnect?: () => void,
+): void {
   const { accessToken } = useAuth();
   const handler = useRef(onUpdate);
   handler.current = onUpdate;
+  const reconnect = useRef(onReconnect);
+  reconnect.current = onReconnect;
 
   useEffect(() => {
     if (!accessToken) return;
@@ -32,6 +46,14 @@ export function useTransactionUpdates(onUpdate: (transaction: Transaction) => vo
     });
 
     socket.on('transaction:updated', (row: Transaction) => handler.current(row));
+
+    // La toute première connexion n'est PAS une reconnexion : l'écran vient de
+    // charger ses données, les redemander serait un aller-retour pour rien.
+    let dejaConnecte = false;
+    socket.on('connect', () => {
+      if (dejaConnecte) reconnect.current?.();
+      dejaConnecte = true;
+    });
 
     return () => {
       socket.close();

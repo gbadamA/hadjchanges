@@ -84,7 +84,7 @@ export default function Operations(): ReactNode {
       next[index] = row;
       return next;
     });
-  });
+  }, () => void load());
 
   const exportHistory = async (): Promise<void> => {
     if (!accessToken) return;

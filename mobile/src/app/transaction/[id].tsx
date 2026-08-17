@@ -56,9 +56,13 @@ export default function TransactionDetail(): ReactNode {
   // Le reçu validé par l'opérateur apparaît ici SANS que le client touche à
   // quoi que ce soit. On filtre sur l'identifiant : le socket porte toutes les
   // transactions du client, pas seulement celle affichée.
-  useTransactionUpdates((row) => {
-    if (row.id === id) setTransaction(row);
-  });
+  useTransactionUpdates(
+    (row) => {
+      if (row.id === id) setTransaction(row);
+    },
+    // Au réveil du serveur, on relit : le statut a pu changer pendant la veille.
+    () => void load(),
+  );
 
   const sendReceipt = async (): Promise<void> => {
     if (!accessToken || !transaction) return;
@@ -209,7 +213,7 @@ export default function TransactionDetail(): ReactNode {
             <Button
               label={busy ? 'Envoi…' : 'Importer mon reçu'}
               onPress={() => void sendReceipt()}
-              variant="gold"
+              variant="accent"
               disabled={busy}
             />
             <Button label="Annuler l’opération" onPress={() => void cancel()} variant="ghost" />
