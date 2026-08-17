@@ -13,6 +13,30 @@
 # Caddy demande les certificats immédiatement et échoue si le DNS ne résout pas.
 
 services:
+  # ────────────────────────────────────────────── base de données ──
+  db:
+    # Même version majeure qu'en développement : une différence de majeure
+    # change des comportements subtils (tri, types), et on ne le découvre qu'en
+    # production, sur des données réelles.
+    image: postgres:16-alpine
+    container_name: hadjchanges-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hadjchanges}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-hadjchanges}
+    # ⚠️ AUCUN `ports:` — la base n'est joignable que depuis le réseau interne
+    # de Docker. Publier 5432 exposerait la base du bureau de change à
+    # l'Internet entier, où les balayages de mots de passe sont permanents.
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./sauvegardes:/sauvegardes
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hadjchanges}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   # ─────────────────────────────────────────────────── entrée HTTPS ──
   caddy:
     image: caddy:2-alpine
@@ -43,11 +67,19 @@ services:
     # Volontairement SANS `ports:` — l'API n'est joignable que par Caddy.
     # L'exposer directement contournerait le TLS et ouvrirait le 3061 au monde.
     expose: ["3061"]
+    # `service_healthy` et non `service_started` : Postgres accepte les
+    # connexions bien après le démarrage du conteneur. Sans cette attente, les
+    # migrations partent trop tôt et l'API meurt au premier lancement.
+    depends_on:
+      db:
+        condition: service_healthy
     environment:
       NODE_ENV: production
       PORT: 3061
-      DATABASE_URL: ${DATABASE_URL}
-      DIRECT_URL: ${DIRECT_URL}
+      # Base LOCALE : pas de pooleur, donc `DIRECT_URL` est la même adresse.
+      # (La distinction n'a de sens que face à un pgBouncer, comme chez Neon.)
+      DATABASE_URL: postgresql://${POSTGRES_USER:-hadjchanges}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-hadjchanges}?schema=public
+      DIRECT_URL: postgresql://${POSTGRES_USER:-hadjchanges}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-hadjchanges}?schema=public
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       CORS_ORIGINS: https://${DOMAINE_ADMIN}
@@ -86,5 +118,6 @@ services:
       NODE_ENV: production
 
 volumes:
+  db-data:
   caddy-data:
   caddy-config:

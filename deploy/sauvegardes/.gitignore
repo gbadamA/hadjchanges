@@ -1,0 +1,3 @@
+# Les sauvegardes contiennent les données réelles des clients : jamais dans git.
+*
+!.gitignore
