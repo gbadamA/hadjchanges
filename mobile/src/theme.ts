@@ -162,7 +162,7 @@ export const T: Record<string, TextStyle> = {
 export const shadow = {
   // Carte posée, discrète.
   card: {
-    shadowColor: '#0B2A4A',
+    shadowColor: '#111A63',
     shadowOpacity: 0.08,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 6 },
@@ -170,7 +170,7 @@ export const shadow = {
   } as ViewStyle,
   // Élément soulevé (cartes clés, feuilles, modales).
   float: {
-    shadowColor: '#0B2A4A',
+    shadowColor: '#111A63',
     shadowOpacity: 0.18,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 12 },
@@ -186,7 +186,7 @@ export const shadow = {
   } as ViewStyle,
   // CTA or avec glow — réservé aux actions qui engagent de la valeur.
   accent: {
-    shadowColor: '#A9871C',
+    shadowColor: '#A3141C',
     shadowOpacity: 0.34,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },

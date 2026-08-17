@@ -13,7 +13,7 @@
     "android": {
       "package": "ci.hadjchanges.app",
       "adaptiveIcon": {
-        "backgroundColor": "#0B2A4A"
+        "backgroundColor": "#111A63"
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [

@@ -75,7 +75,7 @@ export async function registerForPush(accessToken: string): Promise<string | nul
       name: 'Opérations de change',
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#C9A227',
+      lightColor: '#D81E27',
     });
   }
 
