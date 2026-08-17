@@ -42,6 +42,10 @@ services:
     image: caddy:2-alpine
     container_name: hadjchanges-caddy
     restart: unless-stopped
+    # ⚠️ Ne démarre QUE sur demande : `docker compose --profile caddy up -d`.
+    # Sur un serveur qui a déjà nginx ou Apache, Caddy ne peut pas prendre les
+    # ports 80/443 — et les libérer pour lui couperait le site existant.
+    profiles: ["caddy"]
     ports:
       - "80:80" # requis par Let's Encrypt pour la validation
       - "443:443"
@@ -64,8 +68,12 @@ services:
       dockerfile: Dockerfile
     container_name: hadjchanges-api
     restart: unless-stopped
-    # Volontairement SANS `ports:` — l'API n'est joignable que par Caddy.
-    # L'exposer directement contournerait le TLS et ouvrirait le 3061 au monde.
+    # ⚠️ `127.0.0.1:` en préfixe, ce n'est PAS décoratif : sans lui, Docker
+    # ouvre le port sur TOUTES les interfaces et perce le pare-feu (ufw ne voit
+    # pas passer les règles que Docker écrit lui-même dans iptables). L'API
+    # serait alors joignable en clair depuis Internet, TLS contourné.
+    ports:
+      - "127.0.0.1:3061:3061"
     expose: ["3061"]
     # `service_healthy` et non `service_started` : Postgres accepte les
     # connexions bien après le démarrage du conteneur. Sans cette attente, les
@@ -113,6 +121,8 @@ services:
         NEXT_PUBLIC_API_URL: https://${DOMAINE_API}
     container_name: hadjchanges-admin
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:3060:3060"
     expose: ["3060"]
     environment:
       NODE_ENV: production
