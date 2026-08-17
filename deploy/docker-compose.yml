@@ -1,0 +1,90 @@
+# Déploiement HadjChanges sur un VPS.
+#
+#   cd deploy && cp .env.example .env && nano .env && docker compose up -d
+#
+# Caddy termine le TLS et obtient les certificats Let's Encrypt tout seul. Il
+# n'y a donc RIEN à renouveler à la main — un certificat expiré coupe une
+# application mobile sans le moindre message côté serveur.
+#
+# ⚠️ UN NOM DE DOMAINE EST OBLIGATOIRE. Let's Encrypt ne certifie pas une adresse
+# IP. Sans domaine, l'API resterait en http, et l'application mobile refuserait
+# de s'y connecter — le trafic en clair y étant désormais interdit. Faire
+# pointer deux enregistrements A vers l'IP du VPS AVANT le premier démarrage :
+# Caddy demande les certificats immédiatement et échoue si le DNS ne résout pas.
+
+services:
+  # ─────────────────────────────────────────────────── entrée HTTPS ──
+  caddy:
+    image: caddy:2-alpine
+    container_name: hadjchanges-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80" # requis par Let's Encrypt pour la validation
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Les certificats DOIVENT survivre à un redémarrage : sans ce volume,
+      # chaque `docker compose up` en redemanderait, et Let's Encrypt limite à
+      # 5 échecs par heure et par domaine — de quoi se bloquer soi-même.
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      DOMAINE_API: ${DOMAINE_API}
+      DOMAINE_ADMIN: ${DOMAINE_ADMIN}
+    depends_on: [api, admin]
+
+  # ──────────────────────────────────────────────────────────── API ──
+  api:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    container_name: hadjchanges-api
+    restart: unless-stopped
+    # Volontairement SANS `ports:` — l'API n'est joignable que par Caddy.
+    # L'exposer directement contournerait le TLS et ouvrirait le 3061 au monde.
+    expose: ["3061"]
+    environment:
+      NODE_ENV: production
+      PORT: 3061
+      DATABASE_URL: ${DATABASE_URL}
+      DIRECT_URL: ${DIRECT_URL}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      CORS_ORIGINS: https://${DOMAINE_ADMIN}
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-s3}
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_REGION: ${S3_REGION:-auto}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      MAIL_FROM: ${MAIL_FROM:-HadjChanges <no-reply@hadjchanges.ci>}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3061/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      # Les migrations tournent au démarrage : laisser le temps avant de juger.
+      start_period: 90s
+
+  # ─────────────────────────────────────────────── tableau de bord ──
+  admin:
+    build:
+      context: ../admin
+      dockerfile: Dockerfile
+      args:
+        # ⚠️ Figée à la CONSTRUCTION (variable NEXT_PUBLIC_*). La changer exige
+        # `docker compose build admin`, un simple redémarrage ne suffit PAS.
+        NEXT_PUBLIC_API_URL: https://${DOMAINE_API}
+    container_name: hadjchanges-admin
+    restart: unless-stopped
+    expose: ["3060"]
+    environment:
+      NODE_ENV: production
+
+volumes:
+  caddy-data:
+  caddy-config:

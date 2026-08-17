@@ -1,0 +1,29 @@
+# Caddy obtient et renouvelle les certificats Let's Encrypt tout seul.
+# Les WebSockets du suivi temps réel passent sans configuration : `reverse_proxy`
+# relaie la mise à niveau de protocole nativement.
+
+{$DOMAINE_API} {
+	reverse_proxy api:3061
+	encode gzip
+
+	# En-têtes de sécurité. `Strict-Transport-Security` engage le navigateur à
+	# ne plus jamais tenter http sur ce domaine — à ne poser qu'une fois le
+	# certificat obtenu, sinon un domaine mal configuré devient inaccessible.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		-Server
+	}
+}
+
+{$DOMAINE_ADMIN} {
+	reverse_proxy admin:3060
+	encode gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+}

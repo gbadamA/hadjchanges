@@ -68,7 +68,70 @@ Récupérer hôte, port, identifiant et mot de passe dans l'interface Mailtrap.
 Sans relais, les notifications par courriel échouent silencieusement ; l'API
 démarre quand même.
 
-## 4. Render
+## 4. Hébergement — VPS (option retenue)
+
+Tout est dans `deploy/`. Sur le VPS, une fois Docker et le dépôt en place :
+
+```bash
+cd deploy
+cp .env.example .env
+nano .env          # domaines, Neon, JWT, R2, Mailtrap
+docker compose up -d --build
+```
+
+### ⚠️ Un nom de domaine est OBLIGATOIRE
+
+Let's Encrypt ne certifie pas une adresse IP. Sans domaine, l'API resterait en
+`http`, et l'application mobile **refuserait de s'y connecter** : le trafic en
+clair y est désormais interdit, et c'est voulu.
+
+Faire pointer **deux enregistrements A** vers l'IP du VPS **avant** le premier
+démarrage — Caddy demande les certificats immédiatement, et Let's Encrypt limite
+à 5 échecs par heure et par domaine. Un DNS pas encore propagé peut donc vous
+bloquer une heure.
+
+| Enregistrement | Cible |
+|---|---|
+| `api.hadjchanges.ci` | IP du VPS |
+| `admin.hadjchanges.ci` | IP du VPS |
+
+### Ce que fait le montage
+
+- **Caddy** termine le TLS, obtient et **renouvelle seul** les certificats. Rien
+  à surveiller — un certificat expiré coupe l'application mobile sans le moindre
+  message côté serveur.
+- **L'API et le tableau de bord n'exposent aucun port** vers l'extérieur : ils ne
+  sont joignables que par Caddy. Publier le 3061 contournerait le TLS.
+- Les certificats sont dans un **volume** : sans lui, chaque redémarrage en
+  redemanderait de nouveaux.
+- Les WebSockets du suivi temps réel passent sans configuration particulière.
+
+### Générer les deux secrets JWT
+
+```bash
+openssl rand -base64 48
+```
+
+Deux valeurs **différentes**. Réutiliser la même pour l'accès et le
+rafraîchissement permettrait de forger un jeton d'accès à partir d'un jeton de
+rafraîchissement.
+
+### Après le premier démarrage
+
+```bash
+docker compose logs -f api      # les migrations s'appliquent au lancement
+curl https://api.hadjchanges.ci/api/health
+```
+
+> **Le VPS n'a pas de veille**, contrairement au plan gratuit de Render : pas de
+> réveil à 50 secondes, et les WebSockets restent ouverts. En contrepartie, les
+> **sauvegardes vous incombent** — la base est chez Neon, qui les gère, mais si
+> vous basculez un jour vers un PostgreSQL local au VPS, plus personne ne les
+> fera à votre place.
+
+---
+
+## 4 bis. Render (option abandonnée, conservée pour mémoire)
 
 1. **New → Blueprint**, pointer le dépôt `gbadamA/hadjchanges`, branche à
    déployer. Render lit `render.yaml` et crée les deux services.
