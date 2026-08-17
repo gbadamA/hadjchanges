@@ -76,9 +76,17 @@ services:
       - key: S3_SECRET_KEY
         sync: false
       # Courriel sortant — un vrai relais (Brevo, SendGrid, Mailgun…).
+      # ⚠️ Mailtrap distingue DEUX serveurs : `sandbox.smtp.mailtrap.io`
+      # CAPTURE les messages sans jamais les livrer (bac à sable), tandis que
+      # `live.smtp.mailtrap.io` envoie réellement. Mettre le sandbox ici ferait
+      # croire que tout fonctionne alors qu'aucun client ne recevrait rien.
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
         sync: false
       - key: MAIL_FROM
         value: HadjChanges <no-reply@hadjchanges.ci>

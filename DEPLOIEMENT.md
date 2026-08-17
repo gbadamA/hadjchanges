@@ -49,10 +49,24 @@ clé, secret.
 > déposés par les clients disparaissent**. Ce sont des pièces de conformité
 > KYC/LCB-FT : leur perte n'est pas un désagrément, c'est un manquement.
 
-## 3. Le courriel — un vrai relais SMTP
+## 3. Le courriel — Mailtrap
 
-Brevo, SendGrid, Mailgun… Noter hôte et port. Sans relais, les notifications
-par courriel échouent silencieusement (l'API démarre quand même).
+Récupérer hôte, port, identifiant et mot de passe dans l'interface Mailtrap.
+
+> ### ⚠️ Sandbox ou Live : ce n'est pas le même serveur
+>
+> | Serveur | Comportement |
+> |---|---|
+> | `sandbox.smtp.mailtrap.io` (port 2525) | **Capture** les messages dans une boîte de test. **Rien n'est livré.** |
+> | `live.smtp.mailtrap.io` (port 587) | Envoie réellement aux destinataires. |
+>
+> Le sandbox est parfait pour vérifier le rendu des courriels avant ouverture au
+> public. Mais le laisser en production donne l'illusion que tout fonctionne —
+> l'API signale l'envoi comme réussi — alors qu'**aucun client ne reçoit rien**.
+> Le domaine d'envoi doit être vérifié chez Mailtrap pour utiliser le Live.
+
+Sans relais, les notifications par courriel échouent silencieusement ; l'API
+démarre quand même.
 
 ## 4. Render
 
@@ -65,7 +79,7 @@ par courriel échouent silencieusement (l'API démarre quand même).
    |---|---|
    | `DATABASE_URL`, `DIRECT_URL` | étape 1 — **deux chaînes différentes** |
    | `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` | étape 2 |
-   | `SMTP_HOST`, `SMTP_PORT` | étape 3 |
+   | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | étape 3 |
    | `WHATSAPP_*`, `TWILIO_*` | facultatif — l'API démarre sans |
 
    `JWT_ACCESS_SECRET` et `JWT_REFRESH_SECRET` sont générés par Render.

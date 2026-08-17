@@ -25,14 +25,24 @@ export class EmailTransport implements NotificationTransport {
     const port = Number(this.config.get('SMTP_PORT', { infer: true }));
     this.from = this.config.get('MAIL_FROM', { infer: true });
 
+    const user = this.config.get('SMTP_USER', { infer: true });
+    const pass = this.config.get('SMTP_PASS', { infer: true });
+    const authentifie = user.length > 0 && pass.length > 0;
+
     this.transporter = host
       ? createTransport({
           host,
           port,
-          // Mailpit ne fait pas de TLS : `secure: false` est correct ici, et le
-          // serveur de production imposera STARTTLS de lui-même sur le 587.
-          secure: false,
-          ignoreTLS: true,
+          // 465 = TLS implicite ; les autres ports négocient par STARTTLS.
+          secure: port === 465,
+          // ⚠️ `ignoreTLS` UNIQUEMENT sans authentification, c'est-à-dire pour
+          // Mailpit en développement. Le laisser actif face à un relais réel
+          // enverrait les identifiants EN CLAIR — et le serveur refuserait la
+          // connexion, faisant échouer tous les courriels sans que la cause
+          // soit visible depuis l'application.
+          ...(authentifie
+            ? { auth: { user, pass }, requireTLS: port !== 465 }
+            : { ignoreTLS: true }),
         })
       : null;
   }

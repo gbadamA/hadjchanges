@@ -33,6 +33,10 @@ const envSchema = z.object({
   S3_SECRET_KEY: z.string().default(''),
 
   SMTP_HOST: z.string().default('localhost'),
+  // Identifiants du relais. Vides en développement : Mailpit n'authentifie
+  // personne. Un relais réel (Mailtrap, Brevo, SendGrid…) les EXIGE.
+  SMTP_USER: z.string().default(''),
+  SMTP_PASS: z.string().default(''),
   SMTP_PORT: z.coerce.number().int().default(1036),
   MAIL_FROM: z.string().default('HadjChanges <no-reply@hadjchanges.ci>'),
 
