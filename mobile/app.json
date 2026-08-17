@@ -34,11 +34,10 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#0B2A4A"
+          "backgroundColor": "#111A63"
         }
       ],
       "expo-sharing",
-      "expo-build-properties",
       [
         "expo-build-properties",
         {
