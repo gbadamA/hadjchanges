@@ -13,7 +13,8 @@
     "android": {
       "package": "ci.hadjchanges.app",
       "adaptiveIcon": {
-        "backgroundColor": "#111A63"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FFFFFF"
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
@@ -34,7 +35,10 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#111A63"
+          "image": "./assets/splash.png",
+          "imageWidth": 220,
+          "resizeMode": "contain",
+          "backgroundColor": "#FFFFFF"
         }
       ],
       "expo-sharing",
@@ -55,6 +59,7 @@
       "eas": {
         "projectId": "6fdab252-4731-4ce7-8e88-a64e2d135bf8"
       }
-    }
+    },
+    "icon": "./assets/icon.png"
   }
 }
