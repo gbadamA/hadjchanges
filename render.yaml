@@ -39,9 +39,14 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      # PostgreSQL externe (Supabase ou Neon) — voir le point 1 ci-dessus.
-      # Format : postgresql://user:motdepasse@hote:5432/base?schema=public
+      # PostgreSQL externe (Neon) — voir le point 1 ci-dessus.
+      # Chaîne POOLÉE (l'hôte contient `-pooler`), avec `?sslmode=require`.
       - key: DATABASE_URL
+        sync: false
+      # ⚠️ Chaîne DIRECTE (hôte SANS `-pooler`) : les migrations ne passent pas
+      # par pgBouncer. Sans elle, `prisma migrate deploy` échoue au démarrage
+      # et l'API ne démarre pas du tout.
+      - key: DIRECT_URL
         sync: false
       # Générés par Render : deux secrets DISTINCTS, jamais le même.
       - key: JWT_ACCESS_SECRET

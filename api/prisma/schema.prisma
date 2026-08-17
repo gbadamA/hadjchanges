@@ -19,7 +19,15 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  // Connexion applicative : passe par le POOLEUR (pgBouncer chez Neon).
   url      = env("DATABASE_URL")
+  // ⚠️ Connexion DIRECTE, obligatoire pour les migrations. `prisma migrate
+  // deploy` crée des verrous consultatifs et des transactions préparées que
+  // pgBouncer en mode transaction ne sait pas relayer : lancé sur l'URL
+  // poolée, il échoue. Comme les migrations tournent au DÉMARRAGE du
+  // conteneur (voir api/Dockerfile), l'API ne démarrerait tout simplement pas.
+  // Sur un PostgreSQL sans pooleur, mettre la même valeur que DATABASE_URL.
+  directUrl = env("DIRECT_URL")
 }
 
 // ---------------------------------------------------------------------------

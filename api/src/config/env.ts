@@ -7,6 +7,10 @@ import { z } from 'zod';
  */
 const envSchema = z.object({
   DATABASE_URL: z.string().url(),
+  // Connexion directe pour les migrations (voir prisma/schema.prisma).
+  // ⚠️ OBLIGATOIRE : Prisma l'exige dès qu'elle est déclarée dans le schéma.
+  // Sans pooleur, recopier DATABASE_URL à l'identique.
+  DIRECT_URL: z.string().url(),
   PORT: z.coerce.number().int().positive().default(3061),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 

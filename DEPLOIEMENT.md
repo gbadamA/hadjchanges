@@ -5,18 +5,38 @@ leurs valeurs à la création. Chaque étape dit ce qui casse si on la saute.
 
 ---
 
-## 1. La base de données — Supabase ou Neon, PAS Render
+## 1. La base de données — Neon
 
-Créer un projet PostgreSQL gratuit, récupérer la chaîne de connexion
-(`postgresql://…?schema=public`).
+Créer un compte sur [neon.tech](https://neon.tech), puis un projet en région
+**Europe (Frankfurt)** — la même que l'API sur Render, pour éviter un
+aller-retour réseau sur chaque requête.
 
 > **Pourquoi pas le PostgreSQL de Render ?** Son offre gratuite **expire à
 > 90 jours et détruit la base**. C'est ce qui a mis PREVENTIX 360 hors service.
-> Supabase et Neon suspendent après inactivité mais **ne suppriment pas**.
-> Même coût : zéro.
+> Neon suspend après inactivité mais **ne supprime pas**. Même coût : zéro.
+>
+> **Pourquoi pas Supabase ?** Le compte existe, mais son offre gratuite plafonne
+> à **2 projets actifs** et les deux places sont prises (`systemcollaboratif`,
+> `preventix-360`). Neon a son propre quota, indépendant.
 
-Les migrations s'appliquent seules au premier démarrage de l'API
-(`prisma migrate deploy` tourne avant le serveur — voir `api/Dockerfile`).
+### ⚠️ DEUX chaînes de connexion, pas une
+
+Neon en fournit deux, et les confondre empêche l'API de démarrer :
+
+| Variable | Chaîne à copier | Usage |
+|---|---|---|
+| `DATABASE_URL` | hôte **avec** `-pooler` | requêtes de l'application |
+| `DIRECT_URL` | hôte **sans** `-pooler` | migrations uniquement |
+
+Ajouter `?sslmode=require` aux deux — Neon refuse les connexions en clair.
+
+`prisma migrate deploy` crée des verrous consultatifs que pgBouncer, le pooleur
+de Neon, ne sait pas relayer. Comme les migrations tournent **au démarrage du
+conteneur**, une `DIRECT_URL` poolée ou absente ne donne pas une erreur de
+migration : **l'API ne démarre pas du tout**.
+
+Les migrations s'appliquent ensuite seules au premier démarrage
+(`api/Dockerfile`), il n'y a rien à lancer à la main.
 
 ## 2. Le stockage des fichiers — Cloudflare R2 (10 Go gratuits)
 
@@ -43,7 +63,7 @@ par courriel échouent silencieusement (l'API démarre quand même).
 
    | Variable | Source |
    |---|---|
-   | `DATABASE_URL` | étape 1 |
+   | `DATABASE_URL`, `DIRECT_URL` | étape 1 — **deux chaînes différentes** |
    | `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` | étape 2 |
    | `SMTP_HOST`, `SMTP_PORT` | étape 3 |
    | `WHATSAPP_*`, `TWILIO_*` | facultatif — l'API démarre sans |
