@@ -1,0 +1,37 @@
+# API HadjChanges — service systemd.
+#   sudo cp hadjchanges-api.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now hadjchanges-api
+[Unit]
+Description=HadjChanges API (NestJS)
+# La base doit être prête AVANT : les migrations tournent au démarrage.
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=hadjchanges
+WorkingDirectory=/opt/hadjchanges/api
+# ⚠️ Les secrets vivent hors du dépôt, dans un fichier lisible du seul root
+# (chmod 600). Les mettre dans ce fichier .service les rendrait lisibles par
+# n'importe quel utilisateur via `systemctl cat`.
+EnvironmentFile=/etc/hadjchanges/api.env
+ExecStart=/usr/bin/node dist/main.js
+Restart=always
+RestartSec=5
+# Redémarrage en boucle = symptôme, pas solution : au-delà de 5 échecs en
+# 2 minutes, systemd s'arrête et laisse l'erreur visible dans le journal.
+StartLimitBurst=5
+StartLimitIntervalSec=120
+
+# Cloisonnement : le service n'écrit que là où il en a besoin.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hadjchanges-api
+
+[Install]
+WantedBy=multi-user.target

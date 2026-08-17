@@ -1,0 +1,28 @@
+# Tableau de bord HadjChanges (Next.js en sortie standalone).
+[Unit]
+Description=HadjChanges Dashboard (Next.js)
+After=network.target hadjchanges-api.service
+
+[Service]
+Type=simple
+User=hadjchanges
+WorkingDirectory=/opt/hadjchanges/admin/.next/standalone
+Environment=NODE_ENV=production
+Environment=PORT=3060
+# On n'écoute QUE la boucle locale : nginx est la seule porte d'entrée.
+Environment=HOSTNAME=127.0.0.1
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hadjchanges-admin
+
+[Install]
+WantedBy=multi-user.target
