@@ -65,11 +65,15 @@ services:
       # Le mobile n'envoie pas d'en-tête `Origin` : il n'est pas concerné.
       # Render fournit l'hôte SANS schéma ; l'API complète le `https://`
       # manquant (api/src/config/env.ts).
+      # ⚠️ NE PAS utiliser `fromService` / `property: host` ici : chez Render, cette
+      # propriété renvoie le nom d'hôte INTERNE (réseau privé entre services,
+      # ex. « hadjchanges-admin » seul), pas le domaine public en .onrender.com.
+      # Constaté en le déployant : le tableau de bord échouait avec
+      # « API injoignable (https://hadjchanges-api) », suffixe manquant. Le nom
+      # de service étant fixé ci-dessous (`name: hadjchanges-admin`), l'adresse
+      # publique est déterministe tant qu'aucun domaine personnalisé n'est ajouté.
       - key: CORS_ORIGINS
-        fromService:
-          name: hadjchanges-admin
-          type: web
-          property: host
+        value: https://hadjchanges-admin.onrender.com
       # Stockage des pièces d'identité et des reçus — voir le point 3.
       # ⚠️ `sync: false` et non une valeur figée : sinon toute modification faite
       # dans l'interface Render serait ÉCRASÉE à la prochaine synchronisation du
@@ -130,8 +134,10 @@ services:
       # ⚠️ Figée à la CONSTRUCTION (variable NEXT_PUBLIC_*), pas au démarrage :
       # changer cette valeur exige de RECONSTRUIRE le service, pas seulement de
       # le redémarrer.
+      # ⚠️ Même piège que CORS_ORIGINS ci-dessus, et c'est celui-ci qui a été
+      # observé en premier : NEXT_PUBLIC_API_URL valait « hadjchanges-api » sans
+      # suffixe, figé dans le bundle du navigateur à la CONSTRUCTION — une
+      # correction dans Render ne suffit pas seule, il faut reconstruire l'image
+      # (Manual Deploy → Clear build cache & deploy).
       - key: NEXT_PUBLIC_API_URL
-        fromService:
-          name: hadjchanges-api
-          type: web
-          property: host
+        value: https://hadjchanges-api.onrender.com
