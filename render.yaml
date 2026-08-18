@@ -9,9 +9,10 @@
 #
 # 1. LA BASE N'EST PAS CHEZ RENDER, ET C'EST VOULU. Le PostgreSQL gratuit de
 #    Render EXPIRE au bout de 90 jours et emporte les données avec lui : c'est
-#    ce qui a mis PREVENTIX 360 hors service. `DATABASE_URL` pointe donc vers un
-#    PostgreSQL externe gratuit qui, lui, ne s'autodétruit pas — Supabase (déjà
-#    utilisé sur plusieurs projets ITEKT) ou Neon.
+#    ce qui a mis PREVENTIX 360 hors service. `DATABASE_URL` pointe donc vers le
+#    projet SUPABASE (ibujjlldgguyzaytpbtd, Francfort), qui ne s'autodétruit pas.
+#    ⚠️ Le forfait gratuit Supabase met le projet en pause après ~7 jours sans
+#    activité, avec reprise MANUELLE — voir deploy/vps/garder-actif.sh.
 #
 # 2. LE SERVICE S'ENDORT après ~15 min sans trafic, et met ~50 s à se réveiller.
 #    Conséquences vécues par l'utilisateur : la première requête après une
@@ -39,13 +40,20 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      # PostgreSQL externe (Neon) — voir le point 1 ci-dessus.
-      # Chaîne POOLÉE (l'hôte contient `-pooler`), avec `?sslmode=require`.
+      # Supabase — les DEUX chaînes viennent du bouton « Connect », et chez
+      # Supabase elles se distinguent par le PORT, pas par un fragment.
+      #
+      #   DATABASE_URL → « Transaction pooler », port 6543, + ?pgbouncer=true
+      #   DIRECT_URL   → « Session pooler »,     port 5432
+      #
+      # ⚠️ NE PAS prendre « Direct connection » (db.<ref>.supabase.co) pour
+      # DIRECT_URL : elle ne résout qu'en IPv6. Le mode session du 5432 relaie
+      # les verrous consultatifs de `prisma migrate deploy`, ce que le mode
+      # transaction du 6543 ne fait pas — et comme les migrations tournent au
+      # démarrage, se tromper ici empêche l'API de démarrer, pas seulement de
+      # migrer.
       - key: DATABASE_URL
         sync: false
-      # ⚠️ Chaîne DIRECTE (hôte SANS `-pooler`) : les migrations ne passent pas
-      # par pgBouncer. Sans elle, `prisma migrate deploy` échoue au démarrage
-      # et l'API ne démarre pas du tout.
       - key: DIRECT_URL
         sync: false
       # Générés par Render : deux secrets DISTINCTS, jamais le même.
