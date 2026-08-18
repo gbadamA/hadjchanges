@@ -69,6 +69,13 @@ Write-Host ""
 Write-Host "Dépendances (sans effet si déjà installées)..." -ForegroundColor DarkGray
 npm ci --silent
 
+# ⚠️ `npm ci` n'exécute pas toujours `prisma generate` derrière le rideau selon
+# la version de npm (le hook `postinstall` peut être court-circuité). Sans lui,
+# le client livré n'est qu'un squelette qui échoue au premier `new PrismaClient()`
+# avec un message qui ne dit pas "generate manquant" en toutes lettres.
+Write-Host "Génération du client Prisma..." -ForegroundColor DarkGray
+npx prisma generate
+
 Write-Host ""
 Write-Host "Amorçage en cours..." -ForegroundColor Cyan
 npm run prisma:seed
