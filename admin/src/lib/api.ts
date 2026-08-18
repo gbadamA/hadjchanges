@@ -55,7 +55,11 @@ export async function apiFetch<T>(path: string, options: Options = {}): Promise<
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
-    throw new ApiError('API injoignable. Vérifiez qu’elle tourne sur le port 3061.', 0);
+    // ⚠️ Nommer l'adresse VISÉE, pas un port codé en dur : le message d'origine
+      // annonçait « port 3061 » même en production, où la cible réelle est le
+      // domaine Render. Un message qui ment sur la cible fait perdre du temps
+      // à chercher le mauvais coupable.
+      throw new ApiError(`API injoignable (${API_URL}). Vérifiez son adresse et sa disponibilité.`, 0);
   }
 
   const text = await response.text();
