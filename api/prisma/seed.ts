@@ -14,6 +14,27 @@ import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
+/**
+ * ⚠️ Ces mots de passe par défaut sont dans un dépôt PUBLIC : n'importe qui
+ * peut les lire. Ils n'ont de sens qu'en développement.
+ *
+ * En production, le seed REFUSE de démarrer sans mots de passe explicites.
+ * Sans ce garde-fou, un seul `prisma db seed` lancé par distraction créerait un
+ * compte administrateur dont le mot de passe est publiquement connu — sur la
+ * base d'un bureau de change.
+ */
+if (process.env.NODE_ENV === 'production') {
+  const manquants = ['SEED_ADMIN_PASSWORD', 'SEED_CLIENT_PASSWORD'].filter(
+    (cle) => !process.env[cle],
+  );
+  if (manquants.length > 0) {
+    throw new Error(
+      `Refus de peupler la base en production sans ${manquants.join(' et ')}. ` +
+        'Les mots de passe par défaut du dépôt sont publics.',
+    );
+  }
+}
+
 const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? 'Admin@2026';
 const CLIENT_PASSWORD = process.env.SEED_CLIENT_PASSWORD ?? 'Client@2026';
 
