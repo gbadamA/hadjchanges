@@ -10,7 +10,7 @@
 # 1. LA BASE N'EST PAS CHEZ RENDER, ET C'EST VOULU. Le PostgreSQL gratuit de
 #    Render EXPIRE au bout de 90 jours et emporte les données avec lui : c'est
 #    ce qui a mis PREVENTIX 360 hors service. `DATABASE_URL` pointe donc vers le
-#    projet SUPABASE (ibujjlldgguyzaytpbtd, Francfort), qui ne s'autodétruit pas.
+#    projet SUPABASE (région Francfort), qui ne s'autodétruit pas.
 #    ⚠️ Le forfait gratuit Supabase met le projet en pause après ~7 jours sans
 #    activité, avec reprise MANUELLE — voir deploy/vps/garder-actif.sh.
 #
