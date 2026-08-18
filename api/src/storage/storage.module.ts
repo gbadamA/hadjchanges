@@ -24,7 +24,22 @@ import { StorageService } from './storage.service';
       provide: StorageService,
       useFactory: (): StorageService => {
         const env = loadEnv();
-        if (env.STORAGE_DRIVER !== 's3') return new LocalStorageAdapter();
+        if (env.STORAGE_DRIVER !== 's3') {
+          // ⚠️ En production, le disque d'un conteneur est ÉPHÉMÈRE : il est
+          // remis à zéro à chaque redéploiement et à chaque réveil après veille.
+          // Les pièces d'identité et les reçus déposés par les clients — des
+          // pièces de conformité KYC/LCB-FT — disparaîtraient sans le moindre
+          // message. Un stockage local n'est pas une panne, donc rien ne le
+          // signalerait : d'où cet avertissement au démarrage.
+          if (env.NODE_ENV === 'production') {
+            new Logger('StorageModule').warn(
+              'STOCKAGE LOCAL EN PRODUCTION — les pièces d’identité et les reçus ' +
+                'seront PERDUS à chaque redéploiement. Acceptable pour un essai, ' +
+                'jamais pour de vrais clients. Repassez à STORAGE_DRIVER=s3.',
+            );
+          }
+          return new LocalStorageAdapter();
+        }
 
         const missing = (['S3_BUCKET', 'S3_ACCESS_KEY', 'S3_SECRET_KEY'] as const).filter(
           (key) => !env[key],

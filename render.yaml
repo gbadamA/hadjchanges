@@ -71,8 +71,14 @@ services:
           type: web
           property: host
       # Stockage des pièces d'identité et des reçus — voir le point 3.
+      # ⚠️ `sync: false` et non une valeur figée : sinon toute modification faite
+      # dans l'interface Render serait ÉCRASÉE à la prochaine synchronisation du
+      # Blueprint — on repasserait en `s3` sans les clés, et le service
+      # retomberait en échec sans qu'on comprenne pourquoi.
+      #   `local` = disque du conteneur, EFFACÉ à chaque redéploiement.
+      #   `s3`    = Cloudflare R2, seul choix viable pour de vrais clients.
       - key: STORAGE_DRIVER
-        value: s3
+        sync: false
       - key: S3_ENDPOINT
         sync: false
       - key: S3_REGION
