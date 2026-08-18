@@ -16,8 +16,10 @@ const STORAGE_KEY = 'hc.admin.nav';
  * l'agent ne garde ouvert que ce qu'il utilise.
  *
  * Trois règles qui rendent le repli supportable :
- *  1. **Le groupe de la page ouverte est toujours déplié.** Sinon on ne sait
- *     plus où l'on est, ce qui est exactement l'inverse du but d'un menu.
+ *  1. **Le choix de repli de l'agent est respecté**, même sur le groupe de la
+ *     page ouverte — le rouvrir de force sous ses yeux après qu'il l'a replié
+ *     le contredirait. Un point discret sur l'intitulé dit « il y a la page
+ *     en cours là-dedans », sans forcer l'affichage.
  *  2. **L'état est mémorisé** (localStorage) : un agent qui replie « Pilotage »
  *     le matin ne doit pas le retrouver ouvert après chaque navigation.
  *  3. **Un groupe vidé par les droits ne s'affiche pas** — pas d'intitulé qui
@@ -58,8 +60,10 @@ export function SidebarNav({ role, pathname }: { role: Role; pathname: string })
   return (
     <nav className="space-y-4">
       {groups.map((group) => {
-        // Le groupe actif force l'ouverture, même s'il a été replié avant.
-        const open = group.id === activeGroup || !collapsed.includes(group.id);
+        // Le repli choisi par l'agent est respecté, même sur son propre groupe
+        // actif : `hasActive` n'allume que le point, jamais une réouverture forcée.
+        const open = !collapsed.includes(group.id);
+        const hasActive = group.id === activeGroup;
         const sectionId = `nav-${group.id}`;
 
         return (
@@ -68,9 +72,15 @@ export function SidebarNav({ role, pathname }: { role: Role; pathname: string })
               onClick={() => toggle(group.id)}
               aria-expanded={open}
               aria-controls={sectionId}
-              className="flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-caption uppercase tracking-wider text-white/45 transition hover:text-white/80"
+              className="flex w-full items-center gap-2 rounded-sm px-3 py-1.5 text-caption uppercase tracking-wider text-white/45 transition hover:text-white/80"
             >
-              {group.label}
+              <span className="flex-1 text-left">{group.label}</span>
+              {!open && hasActive ? (
+                <span
+                  aria-hidden
+                  className="h-1.5 w-1.5 shrink-0 rounded-full bg-secondary"
+                />
+              ) : null}
               <ChevronDown
                 size={14}
                 aria-hidden
@@ -97,7 +107,7 @@ export function SidebarNav({ role, pathname }: { role: Role; pathname: string })
               }`}
             >
               <div className="overflow-hidden">
-                <div className="space-y-0.5 pt-1">
+                <div className="ml-4 space-y-0.5 border-l border-white/10 pt-1 pl-2.5">
                   {group.items.map((item) => {
                     const active = pathname.startsWith(item.href);
                     const Icon = item.icon;

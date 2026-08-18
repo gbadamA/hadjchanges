@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import localFont from 'next/font/local';
 import type { ReactNode } from 'react';
 import { AuthProvider } from '../lib/auth';
+import { scriptAntiFlash } from '../lib/theme';
 import './globals.css';
 
 /**
@@ -39,7 +40,14 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="fr" className={`${display.variable} ${body.variable}`}>
+    // ⚠️ `suppressHydrationWarning` : le script ci-dessous pose `dark` sur
+    // <html> AVANT que React n'hydrate, pour éviter le flash clair→sombre au
+    // chargement. React verrait alors un attribut qu'il n'a pas lui-même rendu
+    // et le signalerait comme une erreur d'hydratation — c'est attendu ici.
+    <html lang="fr" className={`${display.variable} ${body.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: scriptAntiFlash() }} />
+      </head>
       <body>
         <AuthProvider>{children}</AuthProvider>
       </body>

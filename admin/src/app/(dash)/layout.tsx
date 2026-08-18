@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, type ReactNode } from 'react';
 import { SidebarNav } from '../../components/sidebar-nav';
+import { ThemeToggle } from '../../components/theme-toggle';
 import { useAuth } from '../../lib/auth';
 import { NAVIGATION, navigationFor, ROLE_LABEL } from '../../lib/navigation';
 
@@ -45,23 +46,26 @@ export default function DashLayout({ children }: { children: ReactNode }) {
     <div className="flex min-h-screen">
       <aside className="hidden w-64 shrink-0 flex-col justify-between gap-6 overflow-y-auto bg-diplomatic-deep p-6 text-white lg:flex">
         <div className="space-y-6">
-          {/* ⚠️ Le logo est posé sur un médaillon BLANC, son fond natif. La
-              barre latérale est bleu nuit et le lettrage de la marque est bleu
-              marine : à même le fond, il disparaîtrait. Recolorer le logo
-              serait une décision de marque, pas une décision technique. */}
-          <Link href="/" className="flex items-center gap-3">
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white p-1.5">
-              <Image
-                src="/logo.png"
-                alt="FITYA Transport Logistics"
-                width={648}
-                height={564}
-                className="h-full w-full object-contain"
-                priority
-              />
-            </span>
-            <span className="font-display text-xl">HadjChanges</span>
-          </Link>
+          <div className="flex items-center justify-between gap-2">
+            {/* ⚠️ Le logo est posé sur un médaillon BLANC, son fond natif. La
+                barre latérale est bleu nuit et le lettrage de la marque est bleu
+                marine : à même le fond, il disparaîtrait. Recolorer le logo
+                serait une décision de marque, pas une décision technique. */}
+            <Link href="/" className="flex min-w-0 items-center gap-3">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white p-1.5">
+                <Image
+                  src="/logo.png"
+                  alt="FITYA Transport Logistics"
+                  width={648}
+                  height={564}
+                  className="h-full w-full object-contain"
+                  priority
+                />
+              </span>
+              <span className="truncate font-display text-xl">HadjChanges</span>
+            </Link>
+            <ThemeToggle />
+          </div>
           <SidebarNav role={user.role} pathname={pathname} />
         </div>
 
