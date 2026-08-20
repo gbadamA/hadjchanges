@@ -110,6 +110,32 @@ interface RequestOptions {
   token?: string | null;
 }
 
+/**
+ * Message lisible quand la réponse n'est PAS du JSON.
+ *
+ * ⚠️ Tout ce qui se trouve entre l'application et l'API peut répondre à sa
+ * place, en HTML : hébergeur en panne (page « 502 Bad Gateway »), portail
+ * Wi-Fi d'hôtel, proxy d'entreprise. `JSON.parse` bute alors sur le `<` de
+ * `<!DOCTYPE html>` et lève « JSON Parse error: Unexpected character » — une
+ * erreur de bas niveau qui remontait telle quelle jusqu'à l'écran du client,
+ * en contournant toute la gestion d'erreur ci-dessous.
+ */
+function messageReponseIllisible(status: number): string {
+  if (status === 502 || status === 503 || status === 504) {
+    return 'Service momentanément indisponible. Réessayez dans un instant.';
+  }
+  if (status === 404) {
+    return "Service introuvable à cette adresse. Vérifiez la configuration de l'application.";
+  }
+  if (status >= 200 && status < 300) {
+    // Réponse « réussie » mais illisible : l'application ne parle presque
+    // sûrement pas au bon serveur (l'adresse du dashboard, par exemple, rend
+    // du HTML avec un code 200 parfaitement valide).
+    return "Réponse inattendue du serveur. L'application ne pointe peut-être pas sur la bonne adresse.";
+  }
+  return `Réponse inattendue du serveur (${status}).`;
+}
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, token } = options;
 
@@ -142,7 +168,15 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
 
   const text = await response.text();
-  const data: unknown = text ? JSON.parse(text) : null;
+
+  let data: unknown = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new ApiError(messageReponseIllisible(response.status), response.status);
+    }
+  }
 
   if (!response.ok) {
     const payload = data as { message?: string | string[]; errors?: Array<{ message: string }> } | null;
@@ -272,7 +306,13 @@ async function upload<T>(
     dernier = resultat;
   }
 
-  return JSON.parse(dernier!.body) as T;
+  // Même précaution que pour les appels JSON : un 2xx peut porter du HTML si
+  // l'application ne parle pas au bon serveur.
+  try {
+    return JSON.parse(dernier!.body) as T;
+  } catch {
+    throw new ApiError(messageReponseIllisible(dernier!.status), dernier!.status);
+  }
 }
 
 export const api = {
