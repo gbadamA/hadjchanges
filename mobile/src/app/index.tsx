@@ -1,14 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Link, useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useEffect, useState } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { RateCard } from '../components';
-import { KYC_LABEL } from '../models';
 import { C, R, S, T } from '../theme';
-import { Button, Card, EmptyState, ImmersiveHeader, Loader, Screen } from '../ui';
+import { Button, Card, EmptyState, ImmersiveHeader, Loader } from '../ui';
 import { useRates } from '../useRates';
 
 /**
@@ -23,6 +23,7 @@ export default function Accueil(): ReactNode {
   const { profile, accessToken } = useAuth();
   const [unread, setUnread] = useState(0);
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   // Pastille de notifications : muette en cas d'échec, ce n'est qu'un indicateur.
   useEffect(() => {
@@ -36,11 +37,83 @@ export default function Accueil(): ReactNode {
       .catch(() => setUnread(0));
   }, [accessToken]);
 
+  /**
+   * Barre de navigation, en haut de l'en-tête bleu.
+   *
+   * Elle est POSÉE SUR le dégradé sombre : ses pastilles sont donc translucides
+   * blanches, pas bleu clair sur blanc comme dans le corps de l'écran. Reprendre
+   * les couleurs du corps ici rendrait le texte illisible.
+   */
+  const barreHaute = profile ? (
+    <View style={styles.authRow}>
+      <Link href="/compte" asChild>
+        <Pressable style={styles.accountDark}>
+          <Ionicons name="person-circle-outline" size={20} color={C.onDark} />
+          <Text style={[T.label, styles.accountDarkText]} numberOfLines={1}>
+            {profile.firstName}
+          </Text>
+          {/* Le statut KYC ne tient plus en toutes lettres dans un tiers de
+              largeur, mais il ne doit pas disparaître : une pastille colorée
+              signale que le compte n'est pas encore en règle, et le détail
+              reste sur l'écran « Mon compte ». */}
+          {profile.kycStatus !== 'VALIDE' ? (
+            <View
+              style={[
+                styles.kycDot,
+                { backgroundColor: profile.kycStatus === 'REJETE' ? C.stop : C.warn },
+              ]}
+            />
+          ) : null}
+        </Pressable>
+      </Link>
+      <Link href="/notifications" asChild>
+        <Pressable style={styles.accountDark}>
+          <Ionicons name="notifications-outline" size={20} color={C.onDark} />
+          <Text style={[T.label, styles.accountDarkText]} numberOfLines={1}>
+            Alertes
+          </Text>
+          {unread > 0 ? (
+            <View style={styles.dot}>
+              <Text style={styles.dotText}>{unread > 9 ? '9+' : unread}</Text>
+            </View>
+          ) : null}
+        </Pressable>
+      </Link>
+      <Link href="/operations" asChild>
+        <Pressable style={styles.accountDark}>
+          <Ionicons name="swap-horizontal-outline" size={20} color={C.onDark} />
+          <Text style={[T.label, styles.accountDarkText]} numberOfLines={1}>
+            Opérations
+          </Text>
+        </Pressable>
+      </Link>
+    </View>
+  ) : (
+    <View style={styles.authRow}>
+      <Pressable style={styles.accountDark} onPress={() => router.push('/connexion')}>
+        <Ionicons name="log-in-outline" size={20} color={C.onDark} />
+        <Text style={[T.label, styles.accountDarkText]} numberOfLines={1}>
+          Se connecter
+        </Text>
+      </Pressable>
+      <Pressable style={styles.accountDark} onPress={() => router.push('/inscription')}>
+        <Ionicons name="person-add-outline" size={20} color={C.onDark} />
+        <Text style={[T.label, styles.accountDarkText]} numberOfLines={1}>
+          Créer un compte
+        </Text>
+      </Pressable>
+    </View>
+  );
+
   return (
-    <Screen>
+    // ⚠️ PAS de <Screen> ici : il enveloppe tout dans un défilement, ce qui
+    // emporterait l'en-tête bleu avec la liste. Ici l'en-tête reste FIXE et
+    // seule la liste des taux défile — d'où ce conteneur en colonne.
+    <View style={styles.page}>
       <ImmersiveHeader
         title="Taux du jour"
         subtitle="Mis à jour en direct. Consultez librement, changez en toute sécurité."
+        top={barreHaute}
       >
         <Card style={styles.pitch} elevated>
           <View style={styles.pitchHead}>
@@ -68,50 +141,12 @@ export default function Accueil(): ReactNode {
         </Card>
       </ImmersiveHeader>
 
-      <View style={styles.body}>
-        {profile ? (
-          <View style={styles.authRow}>
-            <Link href="/compte" asChild>
-              <Pressable style={styles.account}>
-                <Ionicons name="person-circle-outline" size={22} color={C.navy} />
-                <Text style={[T.label, styles.accountText]} numberOfLines={1}>
-                  {profile.firstName} · {KYC_LABEL[profile.kycStatus]}
-                </Text>
-              </Pressable>
-            </Link>
-            <Link href="/notifications" asChild>
-              <Pressable style={styles.account}>
-                <Ionicons name="notifications-outline" size={22} color={C.navy} />
-                <Text style={[T.label, styles.accountText]} numberOfLines={1}>
-                  Notifications
-                </Text>
-                {unread > 0 ? (
-                  <View style={styles.dot}>
-                    <Text style={styles.dotText}>{unread > 9 ? '9+' : unread}</Text>
-                  </View>
-                ) : null}
-              </Pressable>
-            </Link>
-            <Link href="/operations" asChild>
-              <Pressable style={styles.account}>
-                <Ionicons name="swap-horizontal-outline" size={22} color={C.navy} />
-                <Text style={[T.label, styles.accountText]} numberOfLines={1}>
-                  Mes opérations
-                </Text>
-              </Pressable>
-            </Link>
-          </View>
-        ) : (
-          <View style={styles.authRow}>
-            <View style={styles.authButton}>
-              <Button label="Se connecter" onPress={() => router.push('/connexion')} variant="ghost" />
-            </View>
-            <View style={styles.authButton}>
-              <Button label="Créer un compte" onPress={() => router.push('/inscription')} />
-            </View>
-          </View>
-        )}
-
+      {/* Seule cette zone défile : l'en-tête bleu reste en place au-dessus. */}
+      <ScrollView
+        style={styles.liste}
+        contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + S.xl }]}
+        showsVerticalScrollIndicator={false}
+      >
         {loading ? <Loader label="Récupération des taux…" /> : null}
 
         {!loading && error ? (
@@ -137,12 +172,15 @@ export default function Accueil(): ReactNode {
             highlight={justUpdated === row.currency.code}
           />
         ))}
-      </View>
-    </Screen>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  // Colonne : en-tête fixe en haut, liste défilante qui prend le reste.
+  page: { flex: 1, backgroundColor: C.bg },
+  liste: { flex: 1 },
   pitch: { marginTop: S.xl, gap: S.md },
   pitchHead: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   base: { ...T.h1, color: C.navy },
@@ -150,19 +188,21 @@ const styles = StyleSheet.create({
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.ok },
   body: { padding: S.lg, gap: S.md },
   authRow: { flexDirection: 'row', gap: S.md },
-  authButton: { flex: 1 },
-  // ⚠️ Style UNIQUE, pas un tableau : ces boutons sont enfants directs d'un
-  // <Link asChild>, qui les clone via <Slot> et refuse une liste de styles.
-  account: {
+  // Pastilles posées SUR le dégradé sombre de l'en-tête : fond translucide
+  // blanc et texte clair. Les tons bleu-sur-blanc du corps de l'écran y
+  // seraient illisibles.
+  accountDark: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: S.sm,
-    backgroundColor: C.navySoft,
+    gap: S.xs,
+    backgroundColor: 'rgba(255, 255, 255, 0.14)',
     borderRadius: R.md,
-    padding: S.md,
+    paddingHorizontal: S.sm,
+    paddingVertical: S.sm,
   },
-  accountText: { flex: 1, color: C.navy },
+  accountDarkText: { flex: 1, color: C.onDark },
+  kycDot: { width: 8, height: 8, borderRadius: 4 },
   dot: {
     minWidth: 20,
     height: 20,

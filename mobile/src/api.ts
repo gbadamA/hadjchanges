@@ -1,3 +1,4 @@
+import * as FileSystem from 'expo-file-system/legacy';
 import { API_BASE_URL } from './api-url';
 import type {
   Agency,
@@ -148,43 +149,75 @@ export interface KycState {
 }
 
 /**
- * Dépôt de fichiers. **Ne jamais poser soi-même l'en-tête `content-type`** sur
- * un envoi multipart : le moteur doit y placer sa frontière (`boundary`), sinon
- * le serveur ne sait pas découper le corps et rejette tout.
+ * Dépôt de fichiers, via `uploadAsync` d'expo-file-system.
+ *
+ * ⚠️ PAS `fetch` + `FormData`. C'est ce qu'on faisait, et ça échouait sur tout
+ * appareil en Android 13 ou plus : le moteur réseau de React Native doit ouvrir
+ * lui-même le fichier rendu par le sélecteur, or l'application n'a aucune
+ * permission de lecture dessus — `READ_EXTERNAL_STORAGE` est plafonnée à
+ * Android 12 (`maxSdkVersion=32`) et `READ_MEDIA_IMAGES` n'est pas déclarée.
+ * L'ouverture échouait, `fetch` levait une exception, et l'utilisateur lisait
+ * « Envoi impossible. Vérifiez votre réseau. » — un message qui accusait le
+ * réseau alors que le réseau n'y était pour rien.
+ *
+ * `uploadAsync` lit le fichier CÔTÉ NATIF, avec les droits accordés au
+ * sélecteur, puis compose le multipart lui-même (et y place sa propre frontière
+ * `boundary` : ne jamais poser `content-type` à la main ici).
+ *
+ * Un fichier par appel — contrainte de l'API, sans conséquence : la pièce
+ * d'identité et le selfie partent déjà en deux envois distincts.
  */
 async function upload<T>(
   path: string,
   { token, fields, files }: { token: string; fields: Record<string, string>; files: Record<string, PickedFile> },
 ): Promise<T> {
-  const form = new FormData();
-  for (const [key, value] of Object.entries(fields)) form.append(key, value);
-  for (const [key, file] of Object.entries(files)) {
-    form.append(key, { uri: file.uri, name: file.name, type: file.type } as unknown as Blob);
+  const entrees = Object.entries(files);
+  if (entrees.length === 0) throw new ApiError('Aucun fichier à envoyer.', 0);
+
+  let dernier: FileSystem.FileSystemUploadResult | null = null;
+
+  for (const [champ, fichier] of entrees) {
+    let resultat: FileSystem.FileSystemUploadResult;
+    try {
+      resultat = await FileSystem.uploadAsync(`${BASE_URL}/api${path}`, fichier.uri, {
+        httpMethod: 'POST',
+        uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+        fieldName: champ,
+        mimeType: fichier.type,
+        headers: { authorization: `Bearer ${token}` },
+        parameters: fields,
+      });
+    } catch (cause) {
+      // Distinguer « fichier illisible » de « réseau coupé » : un message qui
+      // accuse le réseau à tort envoie chercher au mauvais endroit, ce qui est
+      // précisément le défaut que ce changement corrige.
+      const detail = cause instanceof Error ? cause.message : '';
+      throw new ApiError(
+        /file|uri|read|permission|access/i.test(detail)
+          ? 'Impossible de lire ce fichier. Choisissez-le à nouveau.'
+          : 'Envoi impossible. Vérifiez votre réseau.',
+        0,
+      );
+    }
+
+    if (resultat.status < 200 || resultat.status >= 300) {
+      let message = 'Envoi refusé.';
+      try {
+        const corps = JSON.parse(resultat.body) as {
+          message?: string;
+          errors?: Array<{ message: string }>;
+        };
+        message = corps.errors?.map((issue) => issue.message).join('\n') ?? corps.message ?? message;
+      } catch {
+        // Corps illisible (page d'erreur d'un proxy) : on garde le générique.
+      }
+      throw new ApiError(message, resultat.status);
+    }
+
+    dernier = resultat;
   }
 
-  let response: Response;
-  try {
-    response = await fetch(`${BASE_URL}/api${path}`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${token}` },
-      body: form,
-    });
-  } catch {
-    throw new ApiError('Envoi impossible. Vérifiez votre réseau.', 0);
-  }
-
-  const text = await response.text();
-  const data: unknown = text ? JSON.parse(text) : null;
-  if (!response.ok) {
-    const payload = data as { message?: string; errors?: Array<{ message: string }> } | null;
-    throw new ApiError(
-      payload?.errors?.map((issue) => issue.message).join('\n') ??
-        payload?.message ??
-        'Envoi refusé.',
-      response.status,
-    );
-  }
-  return data as T;
+  return JSON.parse(dernier!.body) as T;
 }
 
 export const api = {

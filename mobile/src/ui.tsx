@@ -45,14 +45,22 @@ export function Screen({
   );
 }
 
-/** En-tête immersif bleu nuit avec halos — la signature visuelle du produit. */
+/**
+ * En-tête immersif bleu nuit avec halos — la signature visuelle du produit.
+ *
+ * `top` accueille une barre de navigation placée AU-DESSUS du titre. Elle est
+ * posée sous `insets.top`, donc jamais sous l'heure ni les icônes réseau : sur
+ * un téléphone à encoche, une barre collée au bord haut devient illisible.
+ */
 export function ImmersiveHeader({
   title,
   subtitle,
+  top,
   children,
 }: {
   title: string;
   subtitle?: string;
+  top?: ReactNode;
   children?: ReactNode;
 }): ReactNode {
   const insets = useSafeAreaInsets();
@@ -61,10 +69,11 @@ export function ImmersiveHeader({
       colors={G.deep}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
-      style={[styles.header, { paddingTop: insets.top + S.xl }]}
+      style={[styles.header, { paddingTop: insets.top + (top ? S.md : S.xl) }]}
     >
       <View style={styles.haloOne} />
       <View style={styles.haloTwo} />
+      {top ? <View style={styles.headerTop}>{top}</View> : null}
       <Text style={styles.headerTitle}>{title}</Text>
       {subtitle ? <Text style={styles.headerSubtitle}>{subtitle}</Text> : null}
       {children}
@@ -315,6 +324,7 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: R.xxl,
     overflow: 'hidden',
   },
+  headerTop: { marginBottom: S.lg },
   haloOne: {
     position: 'absolute',
     top: -70,
