@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { api, ApiError, type AuthResponse } from './api';
+import { api, ApiError, brancherRenouvellement, type AuthResponse } from './api';
 import type { Profile } from './models';
 import { registerForPush, unregisterPush } from './push';
 
@@ -88,6 +88,20 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
     // `finally` obligatoire : sans lui, un échec laisse l'app figée sur
     // l'écran de chargement.
     restore().finally(() => setBooting(false));
+  }, [restore]);
+
+  /**
+   * Branche le renouvellement du jeton sur la couche réseau.
+   *
+   * ⚠️ Sans ceci, `api.ts` ne saurait pas rafraîchir et toute action passé
+   * 15 minutes échouerait — c'est ce qui rendait le téléchargement du
+   * justificatif impossible, celui-ci arrivant forcément bien après
+   * l'opération. `restore()` porte déjà le verrou anti-double-appel, donc
+   * plusieurs 401 simultanés ne consomment qu'un seul refresh token.
+   */
+  useEffect(() => {
+    brancherRenouvellement(async () => (await restore())?.accessToken ?? null);
+    return () => brancherRenouvellement(null);
   }, [restore]);
 
   /**

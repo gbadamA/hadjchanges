@@ -75,6 +75,35 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Renouvellement du jeton d'accès, branché par le contexte d'authentification.
+ *
+ * ⚠️ Le jeton d'accès vit 15 minutes et n'était renouvelé QU'AU DÉMARRAGE de
+ * l'application. Passé ce délai, tout appel échouait en 401 — et l'utilisateur
+ * lisait un message technique sans rapport avec la vraie cause. Le cas le plus
+ * visible : télécharger son justificatif, qui arrive forcément longtemps après
+ * l'opération, une fois que l'opérateur a validé.
+ *
+ * Une fonction posée ici plutôt qu'un import direct du contexte : `api.ts` ne
+ * doit rien savoir de React, sinon la couche réseau devient intestable.
+ */
+type Renouvellement = () => Promise<string | null>;
+let renouveler: Renouvellement | null = null;
+
+export function brancherRenouvellement(fn: Renouvellement | null): void {
+  renouveler = fn;
+}
+
+/** Jeton frais, ou `null` si la session est réellement morte. */
+export async function jetonRenouvele(): Promise<string | null> {
+  if (!renouveler) return null;
+  try {
+    return await renouveler();
+  } catch {
+    return null;
+  }
+}
+
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: unknown;
@@ -83,20 +112,33 @@ interface RequestOptions {
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, token } = options;
-  let response: Response;
-  try {
-    response = await fetch(`${BASE_URL}/api${path}`, {
-      method,
-      headers: {
-        'content-type': 'application/json',
-        ...(token ? { authorization: `Bearer ${token}` } : {}),
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-  } catch {
-    // Distinguer « le serveur refuse » de « le réseau ne passe pas » : sur
-    // mobile, le second cas est le plus fréquent et appelle un autre message.
-    throw new ApiError('Connexion impossible. Vérifiez votre réseau.', 0);
+
+  const envoyer = async (jeton: string | null | undefined): Promise<Response> => {
+    try {
+      return await fetch(`${BASE_URL}/api${path}`, {
+        method,
+        headers: {
+          'content-type': 'application/json',
+          ...(jeton ? { authorization: `Bearer ${jeton}` } : {}),
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    } catch {
+      // Distinguer « le serveur refuse » de « le réseau ne passe pas » : sur
+      // mobile, le second cas est le plus fréquent et appelle un autre message.
+      throw new ApiError('Connexion impossible. Vérifiez votre réseau.', 0);
+    }
+  };
+
+  let response = await envoyer(token);
+
+  // Jeton expiré (15 min) : on le renouvelle et on rejoue UNE fois. Sans ça,
+  // toute action après un quart d'heure échouait sur un message opaque.
+  // ⚠️ Une seule tentative : si le nouveau jeton est refusé lui aussi, la
+  // session est morte, et boucler ne ferait que multiplier les appels.
+  if (response.status === 401 && token) {
+    const frais = await jetonRenouvele();
+    if (frais) response = await envoyer(frais);
   }
 
   const text = await response.text();
@@ -175,18 +217,31 @@ async function upload<T>(
   if (entrees.length === 0) throw new ApiError('Aucun fichier à envoyer.', 0);
 
   let dernier: FileSystem.FileSystemUploadResult | null = null;
+  let jeton = token;
 
   for (const [champ, fichier] of entrees) {
-    let resultat: FileSystem.FileSystemUploadResult;
-    try {
-      resultat = await FileSystem.uploadAsync(`${BASE_URL}/api${path}`, fichier.uri, {
+    const envoyer = (avec: string): Promise<FileSystem.FileSystemUploadResult> =>
+      FileSystem.uploadAsync(`${BASE_URL}/api${path}`, fichier.uri, {
         httpMethod: 'POST',
         uploadType: FileSystem.FileSystemUploadType.MULTIPART,
         fieldName: champ,
         mimeType: fichier.type,
-        headers: { authorization: `Bearer ${token}` },
+        headers: { authorization: `Bearer ${avec}` },
         parameters: fields,
       });
+
+    let resultat: FileSystem.FileSystemUploadResult;
+    try {
+      resultat = await envoyer(jeton);
+      // Même renouvellement que pour les appels JSON : déposer une pièce
+      // d'identité prend du temps, le jeton peut expirer entre-temps.
+      if (resultat.status === 401) {
+        const frais = await jetonRenouvele();
+        if (frais) {
+          jeton = frais;
+          resultat = await envoyer(frais);
+        }
+      }
     } catch (cause) {
       // Distinguer « fichier illisible » de « réseau coupé » : un message qui
       // accuse le réseau à tort envoie chercher au mauvais endroit, ce qui est
