@@ -523,6 +523,8 @@ model Transaction {
   finalReceiptPdfUrl String?
 
   receipts         PaymentReceipt[]
+  checkouts        PaymentCheckout[]
+  payouts          PaymentPayout[]
   cashMovements    CashMovement[]
   complianceAlerts ComplianceAlert[]
 
@@ -530,6 +532,138 @@ model Transaction {
   @@index([channel, createdAt])
   @@index([status, createdAt])
   @@index([agencyId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Paiements chez un fournisseur (Wave, ou le simulateur)
+// ---------------------------------------------------------------------------
+
+enum PaymentStatus {
+  EN_COURS
+  REUSSI
+  ECHOUE
+  EXPIRE
+}
+
+enum PayoutStatus {
+  EN_COURS
+  REUSSI
+  ECHOUE
+  ANNULE
+}
+
+/// Session d'encaissement ouverte chez le fournisseur : le client paie dans son
+/// application, et le fournisseur nous le confirme.
+///
+/// Remplace la photo de reçu pour les moyens de paiement qui exposent une API.
+/// Une confirmation signée par l'opérateur ne se falsifie pas, contrairement à
+/// une capture d'écran — c'est l'intérêt principal du dispositif.
+///
+/// Plusieurs lignes par transaction : un client qui abandonne puis recommence
+/// ouvre une nouvelle session, et l'historique des tentatives se garde.
+model PaymentCheckout {
+  id            String      @id @default(cuid())
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  /// `wave` ou `simulation` : trace lequel a servi, car le simulateur ne doit
+  /// jamais pouvoir être confondu avec un paiement réel lors d'un audit.
+  provider String
+  /// Identifiant de session du fournisseur (`cos-…`). Unique : il sert à
+  /// retrouver l'opération depuis un événement entrant.
+  providerSessionId String @unique
+
+  amountXof Decimal       @db.Decimal(18, 2)
+  status    PaymentStatus @default(EN_COURS)
+
+  /// Identifiant de transaction du fournisseur, pour le rapprochement de caisse.
+  providerTransactionId String?
+  failureCode           String?
+
+  /// Adresse de paiement. ⚠️ À ouvrir dans le navigateur du client : Wave
+  /// n'assure pas le retour vers l'application depuis une webview embarquée.
+  launchUrl String
+  /// Wave expire ses sessions au bout de 30 minutes — même durée que le verrou
+  /// de taux, donc les deux tombent ensemble.
+  expiresAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([transactionId])
+  @@index([status, createdAt])
+}
+
+/// Versement sortant vers un numéro mobile money.
+model PaymentPayout {
+  id            String      @id @default(cuid())
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  provider String
+  /// Identifiant du versement chez le fournisseur (`pt-…`). Nul tant que
+  /// l'appel n'a pas abouti — un versement peut exister ici sans exister
+  /// encore là-bas.
+  providerPayoutId String? @unique
+
+  /// ⚠️ Clé d'idempotence. Le point le plus dangereux de l'intégration : Wave
+  /// avertit qu'un même versement envoyé avec une clé DIFFÉRENTE « aboutira
+  /// inévitablement à une transaction dupliquée ». Elle est donc créée une
+  /// fois, stockée ici, et REJOUÉE telle quelle à chaque reprise — jamais
+  /// régénérée. L'unicité est garantie par la base, pas par le code.
+  idempotencyKey String @unique
+
+  /// Ce que le bénéficiaire touche. Les frais s'ajoutent par-dessus, côté
+  /// bureau : promettre 100 000 coûte 100 000 + frais.
+  receiveAmountXof Decimal  @db.Decimal(18, 2)
+  feeXof           Decimal? @db.Decimal(18, 2)
+
+  mobile      String
+  beneficiary String?
+
+  status      PayoutStatus @default(EN_COURS)
+  failureCode String?
+
+  /// Nombre d'envois tentés. Au-delà d'un seuil, l'opération part en revue
+  /// humaine : s'acharner sur un versement qui échoue coûte des frais à chaque
+  /// essai.
+  attempts Int @default(0)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  /// Dernière interrogation du fournisseur : aucun webhook n'existe pour les
+  /// versements, c'est donc une tâche de rapprochement qui les suit.
+  lastCheckedAt DateTime?
+
+  @@index([transactionId])
+  @@index([status, lastCheckedAt])
+}
+
+/// Événements reçus d'un fournisseur, pour le DÉDOUBLONNAGE.
+///
+/// ⚠️ Wave annonce explicitement que ses événements « peuvent être livrés
+/// plusieurs fois » et « arriver dans le désordre ». Sans cette table, un même
+/// paiement rejoué validerait deux fois la même opération.
+///
+/// Contrairement aux règles de la machine à états, qui vivent dans le service,
+/// celle-ci est bien à sa place en base : sous concurrence, seule une
+/// contrainte d'unicité empêche deux requêtes simultanées de passer toutes les
+/// deux le test « cet événement est-il déjà connu ? ».
+model PaymentEvent {
+  id       String @id @default(cuid())
+  provider String
+  /// Identifiant de l'événement chez le fournisseur.
+  providerEventId String
+  type            String
+
+  /// Nul quand l'événement ne concerne aucune opération connue : on le garde
+  /// tout de même, pour qu'un événement inattendu laisse une trace.
+  transactionId String?
+
+  receivedAt DateTime @default(now())
+
+  @@unique([provider, providerEventId])
+  @@index([receivedAt])
 }
 
 /// Preuve de dépôt importée par le client. Plusieurs lignes possibles : un

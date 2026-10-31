@@ -32,6 +32,27 @@ const envSchema = z.object({
   S3_ACCESS_KEY: z.string().default(''),
   S3_SECRET_KEY: z.string().default(''),
 
+  /**
+   * Fournisseur d'encaissement et de versement mobile money.
+   *
+   * ⚠️ `simulation` PAR DÉFAUT, et ce n'est pas de la prudence excessive :
+   * Wave ne propose AUCUN environnement de test. Un défaut à `wave` ferait
+   * qu'un développement lancé sans configuration explicite déplacerait de
+   * l'argent réel. Le module de paiement refuse de démarrer en mode `wave` si
+   * la clé ou le secret manquent.
+   */
+  PAYMENT_DRIVER: z.enum(['simulation', 'wave']).default('simulation'),
+  WAVE_API_KEY: z.string().default(''),
+  /** Secret de webhook (`wave_sn_WHS_…`) — distinct de la clé d'API. */
+  WAVE_WEBHOOK_SECRET: z.string().default(''),
+  WAVE_BASE_URL: z.string().url().default('https://api.wave.com'),
+
+  /**
+   * Adresse publique de cette API. Sert aux adresses de retour de paiement,
+   * que Wave exige absolues et en https.
+   */
+  API_PUBLIC_URL: z.string().url().default('http://localhost:3061'),
+
   SMTP_HOST: z.string().default('localhost'),
   // Identifiants du relais. Vides en développement : Mailpit n'authentifie
   // personne. Un relais réel (Mailtrap, Brevo, SendGrid…) les EXIGE.

@@ -14,6 +14,7 @@ import { DocumentsModule } from './documents/documents.module';
 import { HealthController } from './health.controller';
 import { KycModule } from './kyc/kyc.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { PaymentsModule } from './payments/payments.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { QuotesModule } from './quotes/quotes.module';
 import { RatesModule } from './rates/rates.module';
@@ -32,6 +33,7 @@ import { UsersModule } from './users/users.module';
     AuditModule,
     SettingsModule,
     StorageModule,
+    PaymentsModule,
     NotificationsModule,
     CashModule,
     DocumentsModule,

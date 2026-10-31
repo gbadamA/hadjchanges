@@ -26,3 +26,7 @@ coverage/
 # reconstruisent à l'identique et pollueraient le dépôt de milliers de fichiers.
 mobile/android/
 mobile/ios/
+
+# Binaires de livraison : 43 Mo par APK, et le depot est PUBLIC.
+*.apk
+*.aab
