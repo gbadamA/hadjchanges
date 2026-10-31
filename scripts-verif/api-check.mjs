@@ -1254,12 +1254,21 @@ async function main() {
     // n'est pas davantage exécuté. Ne sommer que CREEE faisait échouer ce
     // contrôle dès qu'une opération traînait en cours de contrôle — le rapport
     // avait raison, c'est la vérification qui regardait trop étroit.
+    // ⚠️ Et « en attente » ne veut pas dire « depuis toujours » : le rapport est
+    // FENÊTRÉ (30 jours par défaut, et il annonce sa fenêtre), alors que
+    // `/transactions?status=` ne l'est pas. Sommer tout l'historique comparait
+    // deux grandeurs différentes et faisait échouer un rapport exact : 22
+    // opérations créées il y a plus d'un mois pesaient 92 M à elles seules.
+    // Quatrième fois que ce script présume de l'état de la base — on filtre
+    // donc sur la fenêtre que le rapport déclare lui-même.
+    const debutFenetre = new Date(`${data?.period?.from}T00:00:00Z`).getTime();
     const enAttente = ['CREEE', 'RECU_SOUMIS', 'RECU_VALIDE', 'RECU_REJETE'];
     const lots = await Promise.all(
       enAttente.map((status) => call('GET', `/transactions?status=${status}`, { token: admin.accessToken })),
     );
     const attendu = lots
       .flatMap((lot) => lot.data ?? [])
+      .filter((row) => new Date(row.createdAt).getTime() >= debutFenetre)
       .reduce((total, row) => total + Number(row.amountXof), 0);
     check(
       'les opérations non exécutées sont comptées à part, pas dans le volume',
@@ -1336,7 +1345,18 @@ async function main() {
     const refuse = await call('GET', '/clients', { token: operateur.accessToken });
     check('un opérateur ne gère pas les clients (403)', refuse.status === 403, `reçu ${refuse.status}`);
 
-    const moussa = (clients.data ?? []).find((row) => row.phone === CLIENT.identifier);
+    // ⚠️ Ne PAS chercher le client de démo dans `/clients` : la liste est
+    // plafonnée à 100 lignes, et la section guichet de ce script crée un client
+    // à chaque passage. Au bout de quelques exécutions, le client de démo
+    // sortait de la page et `moussa.id` plantait tout le script — un faux
+    // négatif qui masquait les sections suivantes. Son identifiant est déjà
+    // connu : il vient de sa propre session.
+    const moussa = client.user ?? (clients.data ?? []).find((row) => row.phone === CLIENT.identifier);
+    if (!moussa?.id) {
+      throw new Error(
+        "Identifiant du client de démonstration introuvable : la session ne porte pas d'utilisateur.",
+      );
+    }
 
     // Plafonds : consommation lisible par l'encadrement ET par le client.
     const limites = await call('GET', `/compliance/limits/${moussa.id}`, { token: admin.accessToken });

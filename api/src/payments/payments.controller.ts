@@ -1,0 +1,240 @@
+import {
+  Controller,
+  Get,
+  Headers,
+  HttpCode,
+  NotFoundException,
+  Param,
+  Post,
+  Query,
+  Req,
+  Res,
+  UnauthorizedException,
+} from '@nestjs/common';
+import type { RawBodyRequest } from '@nestjs/common';
+import { ApiExcludeEndpoint, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Role } from '@prisma/client';
+import type { Request, Response } from 'express';
+import type { AuthUser } from '../common/auth-user';
+import { CurrentUser, Public, Roles } from '../common/decorators';
+import { CheckoutService, type IssueTraitement } from './checkout.service';
+import { PaymentService } from './payment.service';
+import { PaiementSimuleAdapter } from './payment.simule';
+import { SignatureInvalideError } from './wave.signature';
+
+@ApiTags('paiements')
+@Controller('payments')
+export class PaymentsController {
+  constructor(
+    private readonly checkout: CheckoutService,
+    private readonly paiements: PaymentService,
+  ) {}
+
+  @Roles(Role.CLIENT)
+  @Post('transactions/:id/checkout')
+  @ApiOperation({
+    summary: 'Ouvrir une session de paiement mobile money pour une opération.',
+  })
+  ouvrir(
+    @Param('id') id: string,
+    @CurrentUser() client: AuthUser,
+  ): Promise<{ urlPaiement: string; idSession: string; expireLe: string | null; reel: boolean }> {
+    return this.checkout.ouvrir(id, client);
+  }
+
+  /**
+   * Point d'entrée des événements de l'opérateur de paiement.
+   *
+   * ⚠️ **Public par nécessité** : l'opérateur n'a pas de jeton de notre API.
+   * L'authentification est assurée par la SIGNATURE de l'événement, vérifiée
+   * avant toute lecture du contenu — c'est elle qui tient lieu d'identité ici.
+   *
+   * ⚠️ Répond **200 dès que l'événement est durablement enregistré**, même
+   * lorsqu'il ne correspond à rien chez nous. Seule une signature invalide est
+   * refusée. L'opérateur réessaie pendant 3 jours sur une réponse non-2xx :
+   * renvoyer une erreur pour un problème qui n'est pas le sien le ferait
+   * marteler l'API pendant trois jours.
+   */
+  @Public()
+  @Post('wave/webhook')
+  @HttpCode(200)
+  @ApiExcludeEndpoint()
+  async webhook(
+    @Req() requete: RawBodyRequest<Request>,
+    @Headers('wave-signature') signature: string | undefined,
+  ): Promise<{ recu: true; issue: IssueTraitement }> {
+    const rawBody = requete.rawBody;
+    if (!rawBody) {
+      // Ne jamais retomber sur `JSON.stringify(req.body)` : la signature ne
+      // correspondrait plus. Mieux vaut une erreur franche qu'une
+      // vérification qui passe à côté.
+      throw new UnauthorizedException(
+        'Corps brut indisponible : vérification de signature impossible.',
+      );
+    }
+
+    try {
+      const resultat = await this.checkout.traiterEvenement(
+        rawBody,
+        signature,
+        requete.ip,
+      );
+      return { recu: true, issue: resultat.issue };
+    } catch (cause) {
+      if (cause instanceof SignatureInvalideError) {
+        // 401 : le seul refus légitime. Un événement non authentique ne doit
+        // laisser aucune trace exploitable côté métier.
+        throw new UnauthorizedException(cause.message);
+      }
+      throw cause;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Pages de retour
+  // -------------------------------------------------------------------------
+
+  /**
+   * Pages d'atterrissage après paiement.
+   *
+   * ⚠️ Elles n'ont **aucune valeur probante** : seul le webhook signé fait
+   * foi. Un client qui bidouille l'adresse de retour ne doit pas pouvoir faire
+   * croire qu'il a payé. C'est pourquoi ces routes n'écrivent rien.
+   */
+  @Public()
+  @Get('retour/succes')
+  @ApiExcludeEndpoint()
+  retourSucces(@Query('ref') reference: string | undefined, @Res() reponse: Response): void {
+    this.pageSimple(
+      reponse,
+      'Paiement reçu',
+      `Nous avons bien reçu votre paiement${reference ? ` pour l’opération ${this.echapper(reference)}` : ''}. ` +
+        'La confirmation apparaît dans l’application dès que notre système l’a enregistrée.',
+    );
+  }
+
+  @Public()
+  @Get('retour/echec')
+  @ApiExcludeEndpoint()
+  retourEchec(@Query('ref') reference: string | undefined, @Res() reponse: Response): void {
+    this.pageSimple(
+      reponse,
+      'Paiement non abouti',
+      `Votre paiement${reference ? ` pour l’opération ${this.echapper(reference)}` : ''} n’a pas abouti. ` +
+        'Vous pouvez réessayer depuis l’application.',
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Simulation — absente en production
+  // -------------------------------------------------------------------------
+
+  /**
+   * Page qui remplace l'application de l'opérateur en développement.
+   *
+   * ⚠️ Rend 404 dès que l'adaptateur réel est en service, et le module de
+   * paiement refuse de démarrer en simulation hors développement : ces routes
+   * ne peuvent donc pas exister en production. Un bouton « déclarer payé »
+   * joignable en production serait une porte ouverte sur la caisse.
+   */
+  @Public()
+  @Get('simulation/:idSession')
+  @ApiExcludeEndpoint()
+  pageSimulation(@Param('idSession') idSession: string, @Res() reponse: Response): void {
+    this.simulateur();
+    this.pageSimple(
+      reponse,
+      'Paiement simulé',
+      'Aucun argent ne circule : l’opérateur ne fournit aucun environnement de test, ' +
+        'ce simulateur en tient lieu.',
+      `<form method="post" action="/api/payments/simulation/${this.echapper(idSession)}/reussir">
+         <button class="ok" type="submit">Payer</button>
+       </form>
+       <form method="post" action="/api/payments/simulation/${this.echapper(idSession)}/echouer">
+         <button class="ko" type="submit">Simuler un échec</button>
+       </form>`,
+    );
+  }
+
+  @Public()
+  @Post('simulation/:idSession/:issue')
+  @ApiExcludeEndpoint()
+  async agirSimulation(
+    @Param('idSession') idSession: string,
+    @Param('issue') issue: string,
+    @Req() requete: Request,
+    @Res() reponse: Response,
+  ): Promise<void> {
+    const simulateur = this.simulateur();
+    if (issue !== 'reussir' && issue !== 'echouer') {
+      throw new NotFoundException('Issue de simulation inconnue.');
+    }
+
+    simulateur.marquer(idSession, issue === 'reussir' ? 'REUSSI' : 'ECHOUE');
+
+    // ⚠️ On repasse par le VRAI chemin : événement signé, puis
+    // `traiterEvenement` qui vérifie la signature, la fenêtre de rejeu et le
+    // dédoublonnage. Court-circuiter la vérification en simulation
+    // laisserait le code réellement déployé inexercé jusqu'au premier
+    // paiement d'un vrai client.
+    const { corps, signature } = simulateur.fabriquerEvenementSigne(idSession);
+    const resultat = await this.checkout.traiterEvenement(corps, signature, requete.ip);
+
+    this.pageSimple(
+      reponse,
+      issue === 'reussir' ? 'Paiement simulé accepté' : 'Échec simulé',
+      `Traitement : ${resultat.issue}${resultat.reference ? ` — opération ${this.echapper(resultat.reference)}` : ''}. ` +
+        'Vous pouvez revenir à l’application.',
+    );
+  }
+
+  /** Rend le simulateur, ou 404 si l'adaptateur réel est en service. */
+  private simulateur(): PaiementSimuleAdapter {
+    if (!(this.paiements instanceof PaiementSimuleAdapter)) {
+      throw new NotFoundException('Route inexistante.');
+    }
+    return this.paiements;
+  }
+
+  /** Échappement HTML : ces valeurs viennent de l'extérieur. */
+  private echapper(valeur: string): string {
+    return valeur.replace(
+      /[&<>"']/g,
+      (caractere) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[caractere] ??
+        caractere,
+    );
+  }
+
+  private pageSimple(
+    reponse: Response,
+    titre: string,
+    texte: string,
+    complement = '',
+  ): void {
+    reponse
+      .status(200)
+      .type('html')
+      .send(
+        `<!doctype html><html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>${this.echapper(titre)} — HadjChanges</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin:0; min-height:100vh; display:grid; place-items:center;
+         font-family: system-ui, sans-serif; background:#0B2A4A; color:#fff;
+         padding:24px; box-sizing:border-box; }
+  main { max-width:30rem; text-align:center; }
+  h1 { font-size:1.4rem; margin:0 0 .75rem; }
+  p { line-height:1.6; opacity:.9; margin:0 0 1.5rem; }
+  form { display:inline-block; margin:.25rem; }
+  button { font:inherit; padding:.7rem 1.4rem; border:0; border-radius:.5rem;
+           cursor:pointer; color:#0B2A4A; background:#C9A227; }
+  button.ko { background:transparent; color:#fff; border:1px solid rgba(255,255,255,.4); }
+</style></head><body><main>
+<h1>${this.echapper(titre)}</h1><p>${texte}</p>${complement}
+</main></body></html>`,
+      );
+  }
+}

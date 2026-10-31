@@ -1,7 +1,12 @@
 import { Global, Logger, Module } from '@nestjs/common';
 import { type Env, loadEnv } from '../config/env';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { RealtimeModule } from '../realtime/realtime.module';
+import { TransactionsModule } from '../transactions/transactions.module';
+import { CheckoutService } from './checkout.service';
 import { PaymentService } from './payment.service';
 import { PaiementSimuleAdapter } from './payment.simule';
+import { PaymentsController } from './payments.controller';
 import { WavePaymentAdapter } from './payment.wave';
 
 /**
@@ -70,14 +75,26 @@ export function construireAdaptateurPaiement(env: Env): PaymentService {
  * déplace de l'argent réel sans l'avoir voulu, soit on encaisse dans le vide en
  * croyant encaisser pour de bon.
  */
+/**
+ * Global pour l'adaptateur : les paiements servent aux opérations, aux
+ * versements et à la caisse.
+ *
+ * ⚠️ `TransactionsModule` est importé ici, et non l'inverse : la machine à
+ * états ignore tout des paiements, c'est le paiement qui vient s'y brancher.
+ * Le jour où une transaction aura besoin du port, elle l'obtiendra par la
+ * portée globale, sans import — donc sans cycle.
+ */
 @Global()
 @Module({
+  imports: [TransactionsModule, RealtimeModule, NotificationsModule],
+  controllers: [PaymentsController],
   providers: [
     {
       provide: PaymentService,
       useFactory: (): PaymentService => construireAdaptateurPaiement(loadEnv()),
     },
+    CheckoutService,
   ],
-  exports: [PaymentService],
+  exports: [PaymentService, CheckoutService],
 })
 export class PaymentsModule {}

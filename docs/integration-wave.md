@@ -191,8 +191,45 @@ Ces questions ne se résolvent pas dans le code. Les réponses conditionnent la 
 | Adaptateur Wave réel | fait |
 | Vérification de signature + contrôle de conformité | fait, 19/19 |
 | Choix d'adaptateur au démarrage, avec refus de démarrer | fait |
-| Modèles en base (session, versement, événements vus) | à faire |
-| Point d'entrée webhook (corps brut, dédoublonnage) | à faire |
-| Branchement sur la machine à états | à faire |
+| Modèles en base (session, versement, événements vus) | fait, migration appliquée |
+| Point d'entrée webhook (corps brut, dédoublonnage) | fait, 23/23 de bout en bout |
+| Branchement sur la machine à états | fait |
 | Versement + tâche de rapprochement | à faire |
 | Écrans mobile et dashboard | à faire |
+
+### Contrôles
+
+```bash
+cd api && npx tsx ../scripts-verif/wave-signature-check.ts   # 19 cas, conformité à l'exemple de Wave
+cd api && npx tsx ../scripts-verif/wave-config-check.ts      # 8 cas, refus de démarrer
+node scripts-verif/wave-flux-check.mjs                       # 23 cas, API en marche requise
+```
+
+### Ce que le webhook fait, et ne fait pas
+
+Il confirme le paiement (`→ RECU_VALIDE`) et **n'exécute pas le change**. Trois raisons :
+
+1. `CashMovement.createdById` n'est pas nullable : tout mouvement de caisse a un auteur. Attribuer
+   à un agent un décaissement qu'il n'a pas fait falsifierait la piste d'audit du registre.
+2. `ExchangeExecutor` refuse si l'encaisse de l'agence ne suffit pas. L'exception ferait répondre en
+   erreur, et l'opérateur réessaierait **pendant 3 jours** à cause d'un tiroir-caisse vide — alors
+   que le paiement, lui, est confirmé.
+3. Le webhook dispose de 5 secondes : l'arithmétique de caisse n'y a pas sa place.
+
+L'opération arrive donc dans la file du dashboard **déjà marquée payée, sans reçu à examiner**. Ce
+qui disparaît est le jugement « cette capture d'écran est-elle authentique ? » ; ce qui reste est le
+geste d'exécuter le change, qu'un humain faisait de toute façon.
+
+### Garde-fous ajoutés au passage
+
+- **Contrôle du montant** : un encaissement dont le montant diffère de l'attendu ne valide **rien**.
+  Il lève une alerte de conformité `MONTANT_PAIEMENT_DIVERGENT` en sévérité critique et laisse
+  l'opération en attente. Sans ce test, l'automatisme serait plus permissif que l'humain qu'il
+  remplace — l'agent avait le montant attendu affiché en évidence.
+- **Sens de l'opération** : seul un `VENTE_DEVISE` est réglable par mobile money, car la devise
+  **source** est celle que le client remet. Un `ACHAT_DEVISE` suppose des billets étrangers et doit
+  passer au guichet. Sans ce refus, 50 000 EUR seraient encaissés comme 50 000 XOF, soit 1/650 du dû.
+- **Pages de retour sans valeur probante** : elles n'écrivent rien. Seul l'événement signé fait foi,
+  sinon un client bidouillant l'adresse de retour pourrait se déclarer payé.
+- **Routes de simulation inatteignables en production** : 404 dès que l'adaptateur réel est en
+  service, et le module refuse de démarrer en simulation hors développement.

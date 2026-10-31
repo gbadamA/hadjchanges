@@ -56,8 +56,48 @@ const COUNTER_TRANSITIONS: Partial<Record<TransactionStatus, TransactionStatus[]
   [TransactionStatus.CHANGE_EXECUTE]: [TransactionStatus.CLOTUREE],
 };
 
+/**
+ * Transitions **supplémentaires** sur preuve de paiement d'un fournisseur.
+ *
+ * Quand un opérateur de paiement confirme l'encaissement par un événement
+ * signé, il n'y a **pas de reçu à contrôler** : la preuve est la signature.
+ * L'opération passe donc directement de « en attente de paiement » à
+ * « paiement prouvé », sans l'étape `RECU_SOUMIS` qui n'a plus d'objet.
+ *
+ * ⚠️ Déclaré à part, et surtout **atteignable uniquement par
+ * `assertPreuveFournisseur`**, exactement pour la raison qui vaut déjà pour le
+ * guichet : ajouter `CREEE → RECU_VALIDE` à la table commune permettrait à
+ * n'importe quel appel de déclarer une opération payée sans qu'aucun argent
+ * n'ait été vu. Une méthode au nom distinct ne peut pas être atteinte par
+ * erreur, contrairement à un drapeau booléen qu'on oublie de passer.
+ *
+ * Le rejet d'un reçu n'est pas une impasse ici non plus : un client dont le
+ * justificatif a été refusé peut payer par le fournisseur à la place.
+ */
+const PROVIDER_TRANSITIONS: Partial<Record<TransactionStatus, TransactionStatus[]>> = {
+  [TransactionStatus.CREEE]: [TransactionStatus.RECU_VALIDE],
+  [TransactionStatus.RECU_SOUMIS]: [TransactionStatus.RECU_VALIDE],
+  [TransactionStatus.RECU_REJETE]: [TransactionStatus.RECU_VALIDE],
+};
+
 @Injectable()
 export class TransactionStateMachine {
+  /**
+   * Autorise une transition **sur preuve de paiement signée**.
+   *
+   * ⚠️ À n'appeler que depuis le traitement d'un événement dont la signature a
+   * été vérifiée. Aucun contrôleur, aucun service métier ne doit l'appeler :
+   * ce serait contourner le contrôle du paiement.
+   */
+  assertPreuveFournisseur(from: TransactionStatus, to: TransactionStatus): void {
+    if (PROVIDER_TRANSITIONS[from]?.includes(to)) return;
+    // La table commune reste valable : une opération déjà au bon état y passe.
+    if (TRANSITIONS[from].includes(to)) return;
+    throw new ConflictException(
+      `Transition refusée : une transaction ${LABELS[from]} ne peut pas passer à ${LABELS[to]}, même sur preuve de paiement.`,
+    );
+  }
+
   can(
     from: TransactionStatus,
     to: TransactionStatus,

@@ -8,7 +8,11 @@ import { loadEnv } from './config/env';
 
 async function bootstrap(): Promise<void> {
   const env = loadEnv();
-  const app = await NestFactory.create(AppModule);
+  // ⚠️ `rawBody` : les webhooks de paiement se vérifient sur les OCTETS REÇUS.
+  // Démontré dans `scripts-verif/wave-signature-check.ts` — le même JSON
+  // re-sérialisé produit une signature différente, donc une vérification faite
+  // sur le corps parsé rejetterait tous les événements authentiques.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
 
   app.use(helmet());
   app.use(cookieParser());
