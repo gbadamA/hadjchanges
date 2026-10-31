@@ -1373,7 +1373,14 @@ async function main() {
     check('il ne voit pas ceux d’autrui (403)', autrui.status === 403, `reçu ${autrui.status}`);
 
     // Déclenchement du seuil de déclaration : une opération au-dessus du seuil.
-    const avant = await call('GET', '/compliance/alerts?resolved=false', { token: admin.accessToken });
+    // ⚠️ `take=200` (le maximum) plutôt que la page par défaut de 100 : les
+    // alertes sortent « la plus grave d'abord, puis la plus ANCIENNE », un ordre
+    // délibéré — une alerte critique qui dort trois jours ne doit pas être
+    // enterrée. Mais il place toute alerte NEUVE en fin de liste : sur une page
+    // pleine, elle n'apparaît pas, et comparer des longueurs ne prouve plus rien.
+    const avant = await call('GET', '/compliance/alerts?resolved=false&take=200', {
+      token: admin.accessToken,
+    });
     const grosse = await call('POST', '/transactions', {
       token: client.accessToken,
       body: {
@@ -1392,13 +1399,27 @@ async function main() {
       break conformiteSection;
     }
 
-    const apres = await call('GET', '/compliance/alerts?resolved=false', { token: admin.accessToken });
+    const apres = await call('GET', '/compliance/alerts?resolved=false&take=200', {
+      token: admin.accessToken,
+    });
+    const alerte = (apres.data ?? []).find((row) => row.transaction?.id === grosse.data?.id);
+
+    // La page est pleine : l'alerte existe peut-être mais ne peut pas être
+    // atteinte. On le dit, plutôt que d'annoncer un défaut qui n'en est pas un.
+    if (!alerte && (apres.data ?? []).length >= 200) {
+      skip(
+        'déclenchement du seuil de déclaration',
+        'page d’alertes saturée (200 non résolues) — l’alerte neuve est hors de portée, ' +
+          'résorbez la file pour que ce contrôle redevienne concluant',
+      );
+      break conformiteSection;
+    }
+
     check(
       'une opération au-dessus du seuil lève une alerte',
-      (apres.data ?? []).length > (avant.data ?? []).length,
-      `${avant.data?.length} → ${apres.data?.length}`,
+      alerte !== undefined,
+      `${(avant.data ?? []).length} alerte(s) avant, ${(apres.data ?? []).length} après`,
     );
-    const alerte = (apres.data ?? []).find((row) => row.transaction?.id === grosse.data?.id);
     check('l’alerte cite la transaction concernée', alerte !== undefined);
     check('elle est classée CRITIQUE', alerte?.severity === 'CRITIQUE', String(alerte?.severity));
     check(

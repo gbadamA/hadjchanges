@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   Headers,
@@ -13,21 +14,30 @@ import {
 } from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
 import { ApiExcludeEndpoint, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { Role } from '@prisma/client';
+import { PayoutStatus, Role, TransactionStatus } from '@prisma/client';
 import type { Request, Response } from 'express';
-import type { AuthUser } from '../common/auth-user';
+import { PrismaService } from '../prisma/prisma.service';
+import { ADMIN_ROLES, type AuthUser } from '../common/auth-user';
 import { CurrentUser, Public, Roles } from '../common/decorators';
 import { CheckoutService, type IssueTraitement } from './checkout.service';
 import { PaymentService } from './payment.service';
 import { PaiementSimuleAdapter } from './payment.simule';
+import { PayoutService, type VueVersement } from './payout.service';
+import { ReconciliationService } from './reconciliation.service';
 import { SignatureInvalideError } from './wave.signature';
+
+/** Agents habilités à engager des fonds. */
+const STAFF = [Role.OPERATEUR, Role.ADMIN, Role.SUPER_ADMIN] as const;
 
 @ApiTags('paiements')
 @Controller('payments')
 export class PaymentsController {
   constructor(
     private readonly checkout: CheckoutService,
+    private readonly payouts: PayoutService,
+    private readonly reconciliation: ReconciliationService,
     private readonly paiements: PaymentService,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Roles(Role.CLIENT)
@@ -40,6 +50,45 @@ export class PaymentsController {
     @CurrentUser() client: AuthUser,
   ): Promise<{ urlPaiement: string; idSession: string; expireLe: string | null; reel: boolean }> {
     return this.checkout.ouvrir(id, client);
+  }
+
+  /**
+   * Envoi des fonds au bénéficiaire par mobile money.
+   *
+   * ⚠️ Réservé aux agents, et **jamais au client** : c'est un décaissement.
+   * Un client qui pourrait le déclencher pourrait se faire virer les fonds
+   * avant tout contrôle.
+   */
+  @Roles(...STAFF)
+  @Post('transactions/:id/payout')
+  @ApiOperation({ summary: 'Envoyer les fonds au bénéficiaire (mobile money).' })
+  verser(
+    @Param('id') id: string,
+    @CurrentUser() operateur: AuthUser,
+    @Req() requete: Request,
+  ): Promise<VueVersement> {
+    return this.payouts.verser(id, operateur, requete.ip);
+  }
+
+  /**
+   * Force un rapprochement sans attendre le passage de la minute.
+   *
+   * Utile en exploitation : quand un versement traîne « en cours », un
+   * responsable veut savoir maintenant, pas dans une minute. Réservé à
+   * l'encadrement, parce qu'un rapprochement peut clôturer des opérations.
+   */
+  @Roles(...ADMIN_ROLES)
+  @Post('reconciliation')
+  @ApiOperation({ summary: 'Déclencher un rapprochement des paiements maintenant.' })
+  rapprocher(): Promise<{ versements: number; encaissements: number }> {
+    return this.reconciliation.tourner();
+  }
+
+  @Roles(...STAFF)
+  @Get('transactions/:id/payouts')
+  @ApiOperation({ summary: 'Versements tentés sur une opération, le plus récent d’abord.' })
+  listerVersements(@Param('id') id: string): Promise<VueVersement[]> {
+    return this.payouts.lister(id);
   }
 
   /**
@@ -186,6 +235,36 @@ export class PaymentsController {
       `Traitement : ${resultat.issue}${resultat.reference ? ` — opération ${this.echapper(resultat.reference)}` : ''}. ` +
         'Vous pouvez revenir à l’application.',
     );
+  }
+
+  /**
+   * Remet un versement réussi dans l'état « en cours », et son opération en
+   * attente de retrait.
+   *
+   * ⚠️ Route d'ESSAI, inatteignable dès que l'adaptateur réel tourne — même
+   * garde que les pages de simulation. Elle existe parce qu'aucun webhook
+   * n'avertit de l'issue d'un versement : sans moyen de reconstituer l'état
+   * « en cours », le rapprochement — la seule chose qui dénoue ces versements —
+   * ne serait jamais éprouvé avant de servir sur de l'argent réel.
+   */
+  @Roles(...ADMIN_ROLES)
+  @Post('_test/remettre-en-cours')
+  @ApiExcludeEndpoint()
+  async remettreEnCours(
+    @Body('transactionId') transactionId: string,
+  ): Promise<{ remis: number }> {
+    this.simulateur();
+    const { count } = await this.prisma.paymentPayout.updateMany({
+      where: { transactionId, status: PayoutStatus.REUSSI },
+      data: { status: PayoutStatus.EN_COURS, lastCheckedAt: null },
+    });
+    if (count > 0) {
+      await this.prisma.transaction.update({
+        where: { id: transactionId },
+        data: { status: TransactionStatus.PRETE_POUR_RETRAIT, closedAt: null },
+      });
+    }
+    return { remis: count };
   }
 
   /** Rend le simulateur, ou 404 si l'adaptateur réel est en service. */

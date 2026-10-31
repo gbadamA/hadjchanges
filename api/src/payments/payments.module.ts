@@ -7,6 +7,8 @@ import { CheckoutService } from './checkout.service';
 import { PaymentService } from './payment.service';
 import { PaiementSimuleAdapter } from './payment.simule';
 import { PaymentsController } from './payments.controller';
+import { PayoutService } from './payout.service';
+import { ReconciliationService } from './reconciliation.service';
 import { WavePaymentAdapter } from './payment.wave';
 
 /**
@@ -94,7 +96,9 @@ export function construireAdaptateurPaiement(env: Env): PaymentService {
       useFactory: (): PaymentService => construireAdaptateurPaiement(loadEnv()),
     },
     CheckoutService,
+    PayoutService,
+    ReconciliationService,
   ],
-  exports: [PaymentService, CheckoutService],
+  exports: [PaymentService, CheckoutService, PayoutService],
 })
 export class PaymentsModule {}

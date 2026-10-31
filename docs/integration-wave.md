@@ -194,7 +194,7 @@ Ces questions ne se résolvent pas dans le code. Les réponses conditionnent la 
 | Modèles en base (session, versement, événements vus) | fait, migration appliquée |
 | Point d'entrée webhook (corps brut, dédoublonnage) | fait, 23/23 de bout en bout |
 | Branchement sur la machine à états | fait |
-| Versement + tâche de rapprochement | à faire |
+| Versement + tâche de rapprochement | fait, 21/21 |
 | Écrans mobile et dashboard | à faire |
 
 ### Contrôles
@@ -203,7 +203,57 @@ Ces questions ne se résolvent pas dans le code. Les réponses conditionnent la 
 cd api && npx tsx ../scripts-verif/wave-signature-check.ts   # 19 cas, conformité à l'exemple de Wave
 cd api && npx tsx ../scripts-verif/wave-config-check.ts      # 8 cas, refus de démarrer
 node scripts-verif/wave-flux-check.mjs                       # 23 cas, API en marche requise
+node scripts-verif/wave-versement-check.mjs                  # 21 cas, API en marche requise
 ```
+
+### Versement : ce qui évite de payer deux fois
+
+Un versement sortant est irréversible passé 3 jours, et chaque tentative coûte des frais. Trois
+règles s'enchaînent, dans cet ordre précis :
+
+1. **Un versement réussi interdit tout nouvel envoi**, et le refus le dit en ces termes. L'ordre
+   compte : un versement réussi clôture l'opération, donc interroger le statut d'abord répondrait
+   « pas prête pour retrait » — la bonne décision avec la mauvaise raison. Un agent lirait qu'il
+   faut attendre, là où il faut comprendre que l'argent est parti.
+2. **Un versement « en cours » bloque toute relance.** Son sort est inconnu ; une seconde demande
+   porterait une nouvelle clé d'idempotence, donc enverrait réellement l'argent une seconde fois.
+3. **Au-delà de 3 tentatives, la main passe à un humain.**
+
+La ligne en base est écrite **avant** l'appel, avec sa clé définitive : si le processus meurt
+pendant l'appel, la clé survit et une reprise rejoue la même. Et un appel en échec laisse la ligne
+**en cours**, jamais « échouée » — un délai réseau peut survenir *après* que l'opérateur a débité le
+portefeuille. La marquer échouée autoriserait une relance, c'est-à-dire un second virement.
+
+### Rapprochement
+
+Tâche à la minute, plus un déclenchement manuel (`POST /payments/reconciliation`, encadrement
+seulement) pour ne pas attendre quand un versement traîne. Elle couvre deux manques distincts :
+
+- **les versements**, qui n'émettent aucun webhook — sans elle, un versement « en cours » le reste
+  pour toujours ;
+- **les encaissements perdus**, l'opérateur reconnaissant que « des événements peuvent
+  occasionnellement être manqués ». Le rattrapage emprunte le **même** traitement que le webhook
+  (contrôle du montant, dédoublonnage, machine à états) avec un identifiant d'événement
+  déterministe : deux chemins de validation aux règles différentes finiraient par diverger.
+
+⚠️ **Sur une instance qui s'endort, cette tâche ne tourne pas.** Elle rattrape au réveil, mais les
+versements restent « en cours » entre-temps. Une raison de plus de ne pas laisser cette API dormir.
+
+### Un point comptable laissé ouvert, délibérément
+
+Les frais de versement sont enregistrés sur la ligne (`PaymentPayout.feeXof`) mais **ne sont pas
+passés en caisse**, et le flottant de l'opérateur n'est pas un compte de caisse.
+
+Ce n'est pas un oubli : le change a déjà décaissé la devise cible de l'encaisse de l'agence au
+moment de l'exécution. Si les fonds partent ensuite par mobile money, l'argent quitte en réalité le
+portefeuille de l'opérateur, pas le tiroir de l'agence. Inventer une écriture dans une caisse
+d'agence pour des frais payés depuis un portefeuille tiers fausserait le registre d'un bureau de
+change — et un écart invisible vaut mieux qu'un écart faux.
+
+**À trancher avec l'exploitant** : créer une « caisse Wave » (un compte de trésorerie par
+fournisseur, alimenté et relevé comme une agence), ou traiter ces frais hors caisse en charge
+d'exploitation. Les frais observés en simulation sont de **1 %**, à comparer à une commission de
+1 à 1,5 % : le sujet n'est pas cosmétique.
 
 ### Ce que le webhook fait, et ne fait pas
 

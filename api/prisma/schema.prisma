@@ -173,6 +173,7 @@ model User {
   handledTxns       Transaction[]     @relation("OperatorTransactions")
   reviewedKyc       KycDocument[]     @relation("KycReviewer")
   validatedReceipts PaymentReceipt[]  @relation("ReceiptValidator")
+  initiatedPayouts  PaymentPayout[]   @relation("PayoutInitiator")
   publishedRates    ExchangeRate[]
   cashMovements     CashMovement[]
   cashClosures      CashClosure[]
@@ -620,6 +621,15 @@ model PaymentPayout {
 
   mobile      String
   beneficiary String?
+
+  /// Opérateur qui a décidé d'envoyer les fonds.
+  ///
+  /// Conservé parce qu'aucun webhook n'existe pour les versements : c'est une
+  /// tâche de rapprochement qui constate l'arrivée de l'argent, et elle doit
+  /// pouvoir clôturer l'opération au nom de celui qui l'a décidée. Sans cela, la
+  /// clôture serait anonyme alors qu'une personne a bien engagé les fonds.
+  initiatedById String
+  initiatedBy   User   @relation("PayoutInitiator", fields: [initiatedById], references: [id])
 
   status      PayoutStatus @default(EN_COURS)
   failureCode String?

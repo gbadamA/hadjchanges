@@ -14,7 +14,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TransactionsGateway } from '../realtime/transactions.gateway';
 import { TransactionStateMachine } from '../transactions/transaction-state-machine';
 import { transactionInclude } from '../transactions/transactions.view';
-import { type IssuePaiement, PaymentService } from './payment.service';
+import { type EvenementPaiement, type IssuePaiement, PaymentService } from './payment.service';
 
 /**
  * Encaissement par un opérateur mobile money : ouverture de la session, puis
@@ -178,7 +178,25 @@ export class CheckoutService {
     enTeteSignature: string | undefined,
     ip?: string,
   ): Promise<ResultatTraitement> {
-    const evenement = this.paiements.verifierEvenement(rawBody, enTeteSignature);
+    return this.appliquerEvenement(this.paiements.verifierEvenement(rawBody, enTeteSignature), ip);
+  }
+
+  /**
+   * Applique un événement **déjà authentifié**.
+   *
+   * Séparé de la vérification pour que le rattrapage par rapprochement — qui
+   * interroge l'opérateur au lieu de recevoir un événement — emprunte
+   * exactement le même chemin : contrôle du montant, dédoublonnage et machine
+   * à états compris. Deux chemins de validation aux règles différentes
+   * finiraient immanquablement par diverger, et c'est de l'argent.
+   *
+   * ⚠️ N'appeler qu'avec un événement dont la provenance est établie : soit
+   * une signature vérifiée, soit une lecture directe chez l'opérateur.
+   */
+  async appliquerEvenement(
+    evenement: EvenementPaiement,
+    ip?: string,
+  ): Promise<ResultatTraitement> {
     const provider = this.paiements.nom.toLowerCase();
 
     // ⚠️ Dédoublonnage AVANT tout traitement. L'opérateur annonce que ses

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AgenciesModule } from './agencies/agencies.module';
 import { AuditModule } from './audit/audit.module';
@@ -29,6 +30,11 @@ import { UsersModule } from './users/users.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: loadEnv }),
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 120 }]),
+    // ⚠️ Nécessaire au rapprochement des paiements : l'opérateur mobile money
+    // n'émet AUCUN webhook pour les versements, il faut donc aller lire leur
+    // issue. Sans cet enregistrement, le `@Cron` ne se déclencherait jamais et
+    // des versements resteraient « en cours » indéfiniment.
+    ScheduleModule.forRoot(),
     PrismaModule,
     AuditModule,
     SettingsModule,
