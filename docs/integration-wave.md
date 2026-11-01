@@ -195,7 +195,30 @@ Ces questions ne se résolvent pas dans le code. Les réponses conditionnent la 
 | Point d'entrée webhook (corps brut, dédoublonnage) | fait, 23/23 de bout en bout |
 | Branchement sur la machine à états | fait |
 | Versement + tâche de rapprochement | fait, 21/21 |
-| Écrans mobile et dashboard | à faire |
+| Écrans mobile et dashboard | fait |
+
+### Les écrans
+
+**Dashboard — une seule page**, `/paiements` : le flottant, la file « fonds à envoyer », le journal.
+Les encaissements ne demandent aucun geste, ils se confirment seuls ; c'est tout l'intérêt. L'envoi
+exige une confirmation **nominative** dépliée sous la ligne — qui reçoit, sur quel numéro, combien —
+et non un `confirm()` anonyme : un versement ne se reprend pas passé trois jours.
+
+**Mobile client** : « Payer avec Wave » remplace le dépôt manuel quand la méthode l'expose — rendu
+*à la place*, jamais en plus, sans quoi un client paierait deux fois. L'adresse s'ouvre dans le
+**navigateur** du téléphone. Un QR de la référence s'affiche tant que l'opération vit, avec le
+numéro **en grand juste en dessous** : un QR seul laisse en panne dès qu'un écran est fissuré ou
+l'éclairage mauvais.
+
+**Mobile personnel**, `/service` : reçus à contrôler, fonds à envoyer, rapprochement, et une
+recherche d'opération **par scan ou par numéro**. La recherche est en correspondance *exacte* — une
+recherche approchante remonterait les voisines d'un numéro mal lu, et l'agent agirait sur la
+mauvaise opération. Un seul geste est proposé sur l'opération trouvée : celui qu'elle attend.
+
+⚠️ **Pas de double validation.** Sur demande explicite de l'exploitant, le mobile permet aussi
+d'envoyer les fonds. Les deux gestes de cet écran engagent de l'argent, et un compte ouvert sur un
+téléphone perdu ou prêté suffit. C'est un choix assumé : une validation à deux personnes reste à
+ajouter avant un usage réel.
 
 ### Contrôles
 

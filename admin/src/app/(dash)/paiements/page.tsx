@@ -323,8 +323,17 @@ export default function PaiementsPage() {
                       >
                         {STATUT_LABEL[ligne.statut] ?? ligne.statut}
                       </span>
+                      {/* Un code peut subsister sur une ligne RÉUSSIE : par
+                          exemple un second paiement au mauvais montant arrivé
+                          après coup. Le montrer est utile, le présenter comme
+                          un échec serait faux — d'où « signalé » et une couleur
+                          d'alerte, pas de danger, quand l'issue est bonne. */}
                       {ligne.codeEchec ? (
-                        <span className="block text-caption text-danger">{ligne.codeEchec}</span>
+                        <span
+                          className={`block text-caption ${ligne.statut === 'REUSSI' ? 'text-warning' : 'text-danger'}`}
+                        >
+                          {ligne.statut === 'REUSSI' ? `signalé : ${ligne.codeEchec}` : ligne.codeEchec}
+                        </span>
                       ) : null}
                     </td>
                     <td className="p-3 text-caption text-light-muted dark:text-dark-muted">
