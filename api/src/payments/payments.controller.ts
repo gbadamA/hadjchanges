@@ -22,6 +22,7 @@ import { CurrentUser, Public, Roles } from '../common/decorators';
 import { CheckoutService, type IssueTraitement } from './checkout.service';
 import { PaymentService } from './payment.service';
 import { PaiementSimuleAdapter } from './payment.simule';
+import { PaymentsOverviewService, type TableauPaiements } from './payments.overview';
 import { PayoutService, type VueVersement } from './payout.service';
 import { ReconciliationService } from './reconciliation.service';
 import { SignatureInvalideError } from './wave.signature';
@@ -36,6 +37,7 @@ export class PaymentsController {
     private readonly checkout: CheckoutService,
     private readonly payouts: PayoutService,
     private readonly reconciliation: ReconciliationService,
+    private readonly overview: PaymentsOverviewService,
     private readonly paiements: PaymentService,
     private readonly prisma: PrismaService,
   ) {}
@@ -50,6 +52,15 @@ export class PaymentsController {
     @CurrentUser() client: AuthUser,
   ): Promise<{ urlPaiement: string; idSession: string; expireLe: string | null; reel: boolean }> {
     return this.checkout.ouvrir(id, client);
+  }
+
+  @Roles(...STAFF)
+  @Get('tableau')
+  @ApiOperation({
+    summary: 'Tableau des paiements mobile : flottant, fonds à envoyer, journal.',
+  })
+  tableau(@CurrentUser() agent: AuthUser): Promise<TableauPaiements> {
+    return this.overview.tableau(agent);
   }
 
   /**

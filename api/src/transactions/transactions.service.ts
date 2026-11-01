@@ -163,6 +163,10 @@ export class TransactionsService {
     const rows = await this.prisma.transaction.findMany({
       where: {
         status: query.status,
+        // Référence scannée ou saisie : le cloisonnement par agence ci-dessous
+        // s'applique quand même, un opérateur ne retrouve donc pas par ce biais
+        // une opération d'une autre agence.
+        reference: query.reference,
         // Un opérateur ne voit que son agence : la restriction est ici, pas
         // dans l'interface (CLAUDE.md §4).
         agencyId: viewer.role === Role.OPERATEUR ? (viewer.agencyId ?? undefined) : query.agencyId,

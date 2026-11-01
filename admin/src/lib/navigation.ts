@@ -8,6 +8,7 @@ import {
   ScrollText,
   Settings,
   ShieldAlert,
+  Smartphone,
   Store,
   TrendingUp,
   UserCog,
@@ -57,6 +58,10 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
     items: [
       { href: '/guichet', label: 'Guichet', roles: ALL_STAFF, ready: true, icon: Store },
       { href: '/recus', label: 'Reçus de paiement', roles: ALL_STAFF, ready: true, icon: ReceiptText },
+      // Paiements mobile money : les encaissements confirmés sans reçu à
+      // contrôler, et les fonds à envoyer. Placé au comptoir, pas en pilotage :
+      // c'est un geste de la journée, pas un indicateur.
+      { href: '/paiements', label: 'Paiements mobile', roles: ALL_STAFF, ready: true, icon: Smartphone },
       { href: '/kyc', label: 'Identités', roles: ALL_STAFF, ready: true, icon: BadgeCheck },
     ],
   },

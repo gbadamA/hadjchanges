@@ -79,14 +79,29 @@ export default function Accueil(): ReactNode {
           ) : null}
         </Pressable>
       </Link>
-      <Link href="/operations" asChild>
-        <Pressable style={styles.accountDark}>
-          <Ionicons name="swap-horizontal-outline" size={20} color={C.onDark} />
-          <Text style={[T.label, styles.accountDarkText]} numberOfLines={1}>
-            Opérations
-          </Text>
-        </Pressable>
-      </Link>
+      {/* ⚠️ La troisième pastille CHANGE selon le rôle, elle ne s'ajoute pas :
+          les trois se partagent la largeur, une quatrième les rendrait
+          illisibles. Un agent n'a de toute façon pas d'opérations à lui — ce
+          qu'il lui faut, c'est sa file de travail. */}
+      {profile.role === 'CLIENT' ? (
+        <Link href="/operations" asChild>
+          <Pressable style={styles.accountDark}>
+            <Ionicons name="swap-horizontal-outline" size={20} color={C.onDark} />
+            <Text style={[T.label, styles.accountDarkText]} numberOfLines={1}>
+              Opérations
+            </Text>
+          </Pressable>
+        </Link>
+      ) : (
+        <Link href="/service" asChild>
+          <Pressable style={styles.accountDark}>
+            <Ionicons name="briefcase-outline" size={20} color={C.onDark} />
+            <Text style={[T.label, styles.accountDarkText]} numberOfLines={1}>
+              Service
+            </Text>
+          </Pressable>
+        </Link>
+      )}
     </View>
   ) : (
     <View style={styles.authRow}>

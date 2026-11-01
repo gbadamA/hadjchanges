@@ -1,8 +1,7 @@
-import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { formatRate, timeAgo, type RateRow } from './models';
-import { C, R, S, T, TREND } from './theme';
+import { C, R, S, T } from './theme';
 import { Badge, Card } from './ui';
 
 /**
@@ -10,19 +9,17 @@ import { Badge, Card } from './ui';
  * peuvent naviguer — contrairement aux primitives de `ui.tsx`.
  */
 
-const TREND_ICON = {
-  up: 'trending-up' as const,
-  down: 'trending-down' as const,
-  flat: 'remove' as const,
-};
-
 /**
  * Carte d'une devise dans le tableau des taux du jour.
  * `highlight` s'allume brièvement quand la mise à jour vient d'arriver par
  * WebSocket : sans ce signal, un chiffre qui change tout seul passe inaperçu.
+ *
+ * ⚠️ Pas de tendance ici (flèche et pourcentage de variation) : le client vient
+ * voir à quel prix il change aujourd'hui, pas suivre un marché. La variation
+ * reste rendue par l'API et affichée au dashboard, où elle sert à celui qui
+ * FIXE les taux.
  */
 export function RateCard({ row, highlight = false }: { row: RateRow; highlight?: boolean }): ReactNode {
-  const color = TREND[row.trend];
   return (
     <Card style={[styles.card, highlight && styles.highlight]}>
       <View style={styles.head}>
@@ -36,13 +33,6 @@ export function RateCard({ row, highlight = false }: { row: RateRow; highlight?:
               {row.currency.name}
             </Text>
           </View>
-        </View>
-
-        <View style={styles.trend}>
-          <Ionicons name={TREND_ICON[row.trend]} size={16} color={color} />
-          <Text style={[T.caption, { color }]}>
-            {row.trend === 'flat' ? 'stable' : `${row.trendPct} %`}
-          </Text>
         </View>
       </View>
 
@@ -99,7 +89,6 @@ const styles = StyleSheet.create({
   },
   symbol: { ...T.title, color: C.navy },
   names: { flexShrink: 1 },
-  trend: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   quotes: {
     flexDirection: 'row',
     alignItems: 'center',

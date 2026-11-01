@@ -54,6 +54,15 @@ export const receiptReviewSchema = z.object({
 
 export const transactionListSchema = z.object({
   status: z.nativeEnum(TransactionStatus).optional(),
+  /**
+   * Référence lisible (`HC-2026-000123`), scannée ou saisie au comptoir.
+   *
+   * Recherche EXACTE, insensible à la casse : au guichet on retrouve une
+   * opération précise, pas une liste approchante. Une recherche partielle
+   * ferait remonter les voisines d'un numéro mal lu, et l'agent agirait sur la
+   * mauvaise opération.
+   */
+  reference: z.string().trim().toUpperCase().min(3).max(32).optional(),
   currencyCode: z.string().trim().toUpperCase().length(3).optional(),
   agencyId: z.string().cuid().optional(),
   from: z.coerce.date().optional(),

@@ -41,7 +41,14 @@
           "backgroundColor": "#FFFFFF"
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "HadjChanges utilise l'appareil photo pour scanner le code d'une opération au comptoir.",
+          "recordAudioAndroid": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

@@ -422,4 +422,141 @@ export const api = {
 
   logout: (refreshToken: string): Promise<void> =>
     request<void>('/auth/logout', { method: 'POST', body: { refreshToken } }),
+
+  // ------------------------------------------------------------ paiements --
+
+  /**
+   * Ouvre une session de paiement mobile money.
+   *
+   * ⚠️ L'adresse rendue doit être ouverte par le NAVIGATEUR du téléphone, pas
+   * dans une vue web embarquée : l'opérateur n'assure pas le retour vers
+   * l'application depuis une webview.
+   */
+  openCheckout: (transactionId: string, token: string): Promise<CheckoutSession> =>
+    request<CheckoutSession>(`/payments/transactions/${transactionId}/checkout`, {
+      method: 'POST',
+      body: {},
+      token,
+    }),
+
+  // ----------------------------------------------- réservé au personnel ----
+
+  paymentsBoard: (token: string): Promise<PaymentsBoard> =>
+    request<PaymentsBoard>('/payments/tableau', { token }),
+
+  /** ⚠️ Fait SORTIR de l'argent. Toujours faire confirmer avant d'appeler. */
+  sendPayout: (transactionId: string, token: string): Promise<PayoutView> =>
+    request<PayoutView>(`/payments/transactions/${transactionId}/payout`, {
+      method: 'POST',
+      body: {},
+      token,
+    }),
+
+  reconcile: (token: string): Promise<{ versements: number; encaissements: number }> =>
+    request('/payments/reconciliation', { method: 'POST', body: {}, token }),
+
+  receiptQueue: (token: string, status = 'EN_ATTENTE'): Promise<ReceiptQueueRow[]> =>
+    request<ReceiptQueueRow[]>(`/transactions/receipts/queue?status=${status}`, { token }),
+
+  /**
+   * Retrouve une opération par sa référence, scannée ou saisie au comptoir.
+   *
+   * ⚠️ Recherche EXACTE côté API. Une correspondance partielle ferait remonter
+   * les voisines d'un numéro mal lu, et l'agent agirait sur la mauvaise
+   * opération. Le cloisonnement par agence s'applique : un opérateur ne
+   * retrouve pas ainsi l'opération d'une autre agence.
+   */
+  findTransaction: (reference: string, token: string): Promise<Transaction[]> =>
+    request<Transaction[]>(`/transactions?reference=${encodeURIComponent(reference)}`, { token }),
+
+  /** Les fonds sont disponibles : le client peut venir les chercher. */
+  markReady: (transactionId: string, token: string): Promise<Transaction> =>
+    request<Transaction>(`/transactions/${transactionId}/ready`, {
+      method: 'POST',
+      body: {},
+      token,
+    }),
+
+  /** Remis au client : l'opération est terminée et son justificatif émis. */
+  closeTransaction: (transactionId: string, token: string): Promise<Transaction> =>
+    request<Transaction>(`/transactions/${transactionId}/close`, {
+      method: 'POST',
+      body: {},
+      token,
+    }),
+
+  /** ⚠️ Valider un reçu EXÉCUTE le change et mouvemente la caisse. */
+  approveReceipt: (receiptId: string, token: string): Promise<Transaction> =>
+    request<Transaction>(`/transactions/receipts/${receiptId}/approve`, {
+      method: 'POST',
+      body: {},
+      token,
+    }),
+
+  rejectReceipt: (receiptId: string, reason: string, token: string): Promise<Transaction> =>
+    request<Transaction>(`/transactions/receipts/${receiptId}/reject`, {
+      method: 'POST',
+      body: { reason },
+      token,
+    }),
 };
+
+export interface CheckoutSession {
+  urlPaiement: string;
+  idSession: string;
+  expireLe: string | null;
+  /** Faux quand le paiement est simulé : à dire au client, jamais à cacher. */
+  reel: boolean;
+}
+
+export interface PayoutPending {
+  transactionId: string;
+  reference: string;
+  montantXof: string;
+  beneficiaire: string;
+  mobile: string | null;
+  tentativesEchouees: number;
+  agence: string | null;
+}
+
+export interface PaymentsBoard {
+  fournisseur: string;
+  reel: boolean;
+  /** Nul quand le fournisseur ne répond pas : l'écran reste utilisable. */
+  soldeXof: string | null;
+  aVerser: PayoutPending[];
+  journal: Array<{
+    id: string;
+    sens: 'ENTREE' | 'SORTIE';
+    reference: string;
+    statut: string;
+    montantXof: string;
+    fraisXof: string | null;
+    tiers: string | null;
+    codeEchec: string | null;
+    le: string;
+  }>;
+  encaissementsEnAttente: number;
+  versementsEnCours: number;
+}
+
+export interface PayoutView {
+  id: string;
+  statut: 'EN_COURS' | 'REUSSI' | 'ECHOUE' | 'ANNULE';
+  montantRecuXof: string;
+  fraisXof: string | null;
+  mobile: string;
+  tentatives: number;
+  codeEchec: string | null;
+  idFournisseur: string | null;
+  creeLe: string;
+}
+
+export interface ReceiptQueueRow {
+  id: string;
+  status: string;
+  createdAt: string;
+  declaredAmount: string | null;
+  declaredRef: string | null;
+  transaction: Transaction;
+}

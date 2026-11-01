@@ -494,6 +494,71 @@ export const audit = {
     apiFetch<AuditEntry[]>(`/audit?${new URLSearchParams(params).toString()}`, { token }),
 };
 
+// --------------------------------------------------------------- paiements --
+
+export interface JournalRow {
+  id: string;
+  sens: 'ENTREE' | 'SORTIE';
+  reference: string;
+  statut: string;
+  montantXof: string;
+  fraisXof: string | null;
+  tiers: string | null;
+  codeEchec: string | null;
+  le: string;
+}
+
+export interface PayoutPending {
+  transactionId: string;
+  reference: string;
+  montantXof: string;
+  beneficiaire: string;
+  mobile: string | null;
+  tentativesEchouees: number;
+  agence: string | null;
+}
+
+export interface PaymentsBoard {
+  fournisseur: string;
+  /** Faux quand les paiements sont simulés — la page doit le dire. */
+  reel: boolean;
+  /** Nul quand le fournisseur ne répond pas : la page reste utilisable. */
+  soldeXof: string | null;
+  aVerser: PayoutPending[];
+  journal: JournalRow[];
+  encaissementsEnAttente: number;
+  versementsEnCours: number;
+}
+
+export interface PayoutRow {
+  id: string;
+  statut: 'EN_COURS' | 'REUSSI' | 'ECHOUE' | 'ANNULE';
+  montantRecuXof: string;
+  fraisXof: string | null;
+  mobile: string;
+  tentatives: number;
+  codeEchec: string | null;
+  idFournisseur: string | null;
+  creeLe: string;
+}
+
+export const payments = {
+  board: (token: string) => apiFetch<PaymentsBoard>('/payments/tableau', { token }),
+  /** ⚠️ Fait SORTIR de l'argent. Toujours confirmer avant d'appeler. */
+  send: (transactionId: string, token: string) =>
+    apiFetch<PayoutRow>(`/payments/transactions/${transactionId}/payout`, {
+      method: 'POST',
+      body: {},
+      token,
+    }),
+  reconcile: (token: string) =>
+    apiFetch<{ versements: number; encaissements: number }>('/payments/reconciliation', {
+      method: 'POST',
+      body: {},
+      token,
+    }),
+};
+
 export interface RateRow {
   currency: { code: string; name: string; symbol: string; decimals: number };
   buyRate: string;

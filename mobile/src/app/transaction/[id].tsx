@@ -2,7 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 import { api, ApiError, type PickedFile, type PublicSettings } from '../../api';
 import { useAuth } from '../../auth';
 import { downloadAndShare } from '../../download';
@@ -29,6 +30,33 @@ export default function TransactionDetail(): ReactNode {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  /**
+   * Paiement dans l'application de l'opérateur, sans reçu à importer.
+   *
+   * ⚠️ `Linking.openURL` ouvre le NAVIGATEUR du téléphone, et c'est exigé :
+   * l'opérateur n'assure pas le retour vers notre application depuis une vue
+   * web embarquée. Rien n'est marqué comme payé ici — seul l'événement signé
+   * reçu par l'API fait foi, et l'écran se met à jour par WebSocket.
+   */
+  const payer = useCallback(async (): Promise<void> => {
+    if (!accessToken || !transaction) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const session = await api.openCheckout(transaction.id, accessToken);
+      const ouvrable = await Linking.canOpenURL(session.urlPaiement);
+      if (!ouvrable) {
+        setError('Aucune application ne peut ouvrir la page de paiement.');
+        return;
+      }
+      await Linking.openURL(session.urlPaiement);
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : 'Paiement indisponible pour l’instant.');
+    } finally {
+      setBusy(false);
+    }
+  }, [accessToken, transaction]);
 
   const load = useCallback(async (): Promise<void> => {
     if (!accessToken || !id) {
@@ -140,6 +168,23 @@ export default function TransactionDetail(): ReactNode {
   const lastReceipt = transaction.receipts[0];
   const awaitingReceipt = transaction.status === 'CREEE' || transaction.status === 'RECU_REJETE';
 
+  /**
+   * Réglable dans l'application de l'opérateur.
+   *
+   * ⚠️ Trois conditions, et aucune n'est superflue : seul Wave expose une API
+   * (les autres portefeuilles restent manuels) ; l'opérateur n'encaisse qu'en
+   * XOF, donc la devise que le client remet doit l'être ; et l'opération doit
+   * être encore en attente — une session ouverte sur un reçu déjà rejeté ferait
+   * payer un client dont le dossier est en cours de reprise.
+   */
+  /** Une opération close ou annulée n'a plus rien à faire présenter. */
+  const enCours = transaction.status !== 'CLOTUREE' && transaction.status !== 'ANNULEE';
+
+  const payableEnLigne =
+    transaction.status === 'CREEE' &&
+    transaction.depositMethod === 'WAVE' &&
+    transaction.sourceCurrency === 'XOF';
+
   return (
     <Screen>
       <View style={styles.body}>
@@ -184,7 +229,29 @@ export default function TransactionDetail(): ReactNode {
           ) : null}
         </Card>
 
-        {awaitingReceipt ? (
+        {/* Paiement dans l'application de l'opérateur : ni numéro à recopier,
+            ni capture d'écran à envoyer, ni attente d'un contrôle humain. Rendu
+            à la place du dépôt manuel, pas en plus — proposer les deux ferait
+            payer deux fois. */}
+        {payableEnLigne ? (
+          <Card style={styles.action}>
+            <Text style={T.title}>Payer avec {DEPOSIT_LABEL[transaction.depositMethod]}</Text>
+            <Text style={T.bodyMute}>
+              Vous réglez {money(transaction.sourceAmount, 0, transaction.sourceCurrency)} dans
+              l’application {DEPOSIT_LABEL[transaction.depositMethod]}. Votre paiement est confirmé
+              automatiquement : aucun reçu à envoyer.
+            </Text>
+            <Button
+              label={busy ? 'Ouverture…' : 'Payer maintenant'}
+              onPress={() => void payer()}
+              variant="accent"
+              disabled={busy}
+            />
+            <Button label="Annuler l’opération" onPress={() => void cancel()} variant="ghost" />
+          </Card>
+        ) : null}
+
+        {awaitingReceipt && !payableEnLigne ? (
           <Card style={styles.action}>
             <Text style={T.title}>
               {transaction.status === 'RECU_REJETE' ? 'Déposez un nouveau reçu' : 'Effectuez votre dépôt'}
@@ -217,6 +284,25 @@ export default function TransactionDetail(): ReactNode {
               disabled={busy}
             />
             <Button label="Annuler l’opération" onPress={() => void cancel()} variant="ghost" />
+          </Card>
+        ) : null}
+
+        {/* Code à présenter au comptoir. L'agent le scanne, ou lit la
+            référence à voix haute si la caméra refuse — d'où le numéro écrit
+            en grand JUSTE EN DESSOUS : un QR seul laisse en panne dès qu'un
+            écran est fissuré ou l'éclairage mauvais. */}
+        {enCours ? (
+          <Card style={styles.action}>
+            <Text style={T.title}>À présenter au comptoir</Text>
+            <View style={styles.qr}>
+              <QRCode value={transaction.reference} size={168} backgroundColor="transparent" />
+            </View>
+            <Text style={styles.qrReference} selectable>
+              {transaction.reference}
+            </Text>
+            <Text style={T.caption}>
+              L’agent scanne ce code, ou saisit le numéro, pour retrouver votre opération.
+            </Text>
           </Card>
         ) : null}
 
@@ -273,6 +359,14 @@ const styles = StyleSheet.create({
   amount: { ...T.amount, color: C.navy },
   line: { flexDirection: 'row', justifyContent: 'space-between', alignSelf: 'stretch' },
   action: { gap: S.md },
+  qr: { alignSelf: 'center', padding: S.sm, backgroundColor: C.onDark, borderRadius: R.sm },
+  qrReference: {
+    ...T.h1,
+    alignSelf: 'center',
+    // Chiffres de largeur fixe : une référence se lit à voix haute au comptoir,
+    // et des chiffres qui dansent se lisent mal.
+    fontVariant: ['tabular-nums'],
+  },
   deposit: { backgroundColor: C.navySoft, borderRadius: R.md, padding: S.md, gap: 2 },
   depositNumber: { ...T.h2, color: C.navy, fontVariant: ['tabular-nums'] },
   timeline: { gap: S.md },

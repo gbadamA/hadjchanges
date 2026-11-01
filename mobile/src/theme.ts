@@ -62,17 +62,6 @@ export const C = {
 };
 
 /**
- * Variation d'un taux — convention métier, pas esthétique.
- * Vert = monte, rouge = baisse, gris = stable. Ne jamais inverser, et ne jamais
- * y mettre le rouge de marque (il dit « valeur », pas « direction »).
- */
-export const TREND = {
-  up: C.ok,
-  down: C.stop,
-  flat: C.textMute,
-} as const;
-
-/**
  * Une couleur par statut de transaction. Identique au dashboard
  * (`admin/src/lib/tokens.ts` → statusColors) : un statut a UNE couleur, partout.
  */
