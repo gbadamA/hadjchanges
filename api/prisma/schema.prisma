@@ -676,15 +676,27 @@ model PaymentEvent {
   @@index([receivedAt])
 }
 
-/// Preuve de dépôt importée par le client. Plusieurs lignes possibles : un
-/// reçu rejeté n'est pas supprimé, le client en redépose un nouveau.
+/// Preuve qu'un paiement a bien été reçu.
+///
+/// Elle prend deux formes, et c'est voulu :
+///  - **une attestation d'agent** : au comptoir, l'agent retrouve l'opération
+///    (QR scanné ou numéro dicté), constate le paiement ou les espèces, et
+///    l'atteste. `fileUrl` est alors nul, et `declaredRef` porte la référence
+///    du paiement relevée sur le téléphone du client.
+///  - **un document** importé par le client — parcours historique, conservé
+///    pour les lignes déjà en base.
+///
+/// Plusieurs lignes possibles par opération : une preuve rejetée n'est pas
+/// supprimée, elle est remplacée.
 model PaymentReceipt {
   id            String      @id @default(cuid())
   transactionId String
   transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
 
-  fileUrl  String
-  mimeType String
+  /// ⚠️ Nuls pour une attestation d'agent : il n'y a pas de fichier. Ne jamais
+  /// les rendre obligatoires à nouveau sans traiter ce cas.
+  fileUrl  String?
+  mimeType String?
   /// Montant et référence lus sur le reçu, saisis par l'opérateur au contrôle.
   declaredAmount Decimal? @db.Decimal(18, 2)
   declaredRef    String?

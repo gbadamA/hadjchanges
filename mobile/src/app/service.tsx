@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import {
-  api,
-  ApiError,
-  type PaymentsBoard,
-  type PayoutPending,
-  type ReceiptQueueRow,
-} from '../api';
+import { api, ApiError, type PaymentsBoard, type PayoutPending } from '../api';
 import { useAuth } from '../auth';
 import { money, type Transaction } from '../models';
 import { ScanOverlay } from '../scan';
@@ -16,30 +10,42 @@ import { Button, Card, EmptyState, ErrorBanner, Field, Loader, Screen } from '..
 /**
  * Espace de service — ce qu'un agent a à faire, sur son téléphone.
  *
- * Deux files, dans l'ordre de la journée : les reçus à contrôler, puis les
- * fonds à envoyer. Rien d'autre : un tableau de bord complet se consulte au
- * dashboard, sur un écran large. Ici on **agit**, debout, entre deux clients.
+ * Le geste central est en haut : **retrouver l'opération du client** en
+ * scannant son code ou en saisissant son numéro, puis encaisser. Il n'y a plus
+ * de file de reçus à contrôler — le client n'importe plus de photo, c'est
+ * l'agent qui constate le paiement, client devant lui.
  *
- * ⚠️ Les deux gestes de cet écran engagent de l'argent — valider un reçu
- * exécute le change et mouvemente la caisse, envoyer des fonds les fait sortir
- * sans retour possible passé trois jours. Chacun demande donc une confirmation
- * qui redit le montant, et le second nomme aussi le bénéficiaire. Il n'existe
- * pas encore de double validation à deux personnes : sur un téléphone perdu ou
- * prêté, un compte ouvert suffit. C'est un choix assumé, pas un oubli.
+ * ⚠️ Les deux gestes de cet écran engagent de l'argent — encaisser exécute le
+ * change et mouvemente la caisse, envoyer des fonds les fait sortir sans retour
+ * possible passé trois jours. Chacun demande donc une confirmation qui redit le
+ * montant, et le second nomme aussi le bénéficiaire. Il n'existe pas encore de
+ * double validation à deux personnes : sur un téléphone perdu ou prêté, un
+ * compte ouvert suffit. C'est un choix assumé, pas un oubli.
  */
+/**
+ * États depuis lesquels un agent peut encaisser au comptoir.
+ *
+ * Les mêmes que ceux acceptés par l'API : un justificatif déjà déposé ou
+ * refusé n'empêche pas le client de venir payer en personne.
+ */
+const EN_ATTENTE_DE_PAIEMENT: ReadonlyArray<Transaction['status']> = [
+  'CREEE',
+  'RECU_SOUMIS',
+  'RECU_REJETE',
+];
+
 export default function Service(): ReactNode {
   const { profile, accessToken } = useAuth();
 
   const [board, setBoard] = useState<PaymentsBoard | null>(null);
-  const [recus, setRecus] = useState<ReceiptQueueRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const [aVerserConfirme, setAVerserConfirme] = useState<string | null>(null);
-  const [aRejeter, setARejeter] = useState<string | null>(null);
-  const [motif, setMotif] = useState('');
+  const [aEncaisser, setAEncaisser] = useState(false);
+  const [referencePaiement, setReferencePaiement] = useState('');
 
   const [numero, setNumero] = useState('');
   const [scanOuvert, setScanOuvert] = useState(false);
@@ -55,13 +61,7 @@ export default function Service(): ReactNode {
     }
     setError(null);
     try {
-      // Les deux files en parallèle : l'agent ne doit pas attendre deux fois.
-      const [tableau, file] = await Promise.all([
-        api.paymentsBoard(accessToken),
-        api.receiptQueue(accessToken),
-      ]);
-      setBoard(tableau);
-      setRecus(file);
+      setBoard(await api.paymentsBoard(accessToken));
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'Données de service illisibles.');
     } finally {
@@ -129,40 +129,33 @@ export default function Service(): ReactNode {
     }
   }
 
-  async function valider(recu: ReceiptQueueRow): Promise<void> {
+  /**
+   * Encaissement au comptoir : l'agent constate le paiement et l'atteste.
+   *
+   * ⚠️ Exécute le change et mouvemente la caisse dans la foulée. La référence
+   * du paiement est la SEULE trace vérifiable quand le client a réglé par
+   * mobile money — plus aucun justificatif n'est conservé.
+   */
+  async function encaisser(operation: Transaction): Promise<void> {
     if (!accessToken) return;
     setBusy(true);
     setError(null);
     setNotice(null);
     try {
-      await api.approveReceipt(recu.id, accessToken);
-      setNotice(`Reçu validé, change exécuté (${recu.transaction.reference}).`);
+      const miseAJour = await api.collect(
+        operation.id,
+        referencePaiement.trim().length >= 3
+          ? { declaredRef: referencePaiement.trim() }
+          : {},
+        accessToken,
+      );
+      setTrouvee(miseAJour);
+      setAEncaisser(false);
+      setReferencePaiement('');
+      setNotice(`Paiement constaté, change exécuté (${operation.reference}).`);
       await load();
     } catch (cause) {
-      setError(cause instanceof ApiError ? cause.message : 'Validation impossible.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function rejeter(recu: ReceiptQueueRow): Promise<void> {
-    if (!accessToken) return;
-    // Le motif part au client tel quel : un « non » sans raison le laisse sans
-    // rien à corriger. Même exigence qu'au dashboard.
-    if (motif.trim().length < 10) {
-      setError('Le motif doit être explicite : c’est lui que le client recevra.');
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      await api.rejectReceipt(recu.id, motif.trim(), accessToken);
-      setNotice(`Reçu rejeté, motif transmis au client (${recu.transaction.reference}).`);
-      setARejeter(null);
-      setMotif('');
-      await load();
-    } catch (cause) {
-      setError(cause instanceof ApiError ? cause.message : 'Rejet impossible.');
+      setError(cause instanceof ApiError ? cause.message : 'Encaissement impossible.');
     } finally {
       setBusy(false);
     }
@@ -323,15 +316,57 @@ export default function Service(): ReactNode {
             {/* Un seul geste proposé : celui que l'opération attend. Offrir
                 toutes les actions possibles ferait chercher la bonne, et se
                 tromper. */}
-            {trouvee.status === 'RECU_SOUMIS' ? (
-              (() => {
-                const recu = trouvee.receipts.find((r) => r.status === 'EN_ATTENTE');
-                return recu ? (
-                  <Text style={T.caption}>
-                    Reçu en attente de contrôle — il figure dans la file ci-dessous.
+            {EN_ATTENTE_DE_PAIEMENT.includes(trouvee.status) ? (
+              aEncaisser ? (
+                <View style={styles.confirm}>
+                  <Text style={T.body}>
+                    Confirmer avoir reçu{' '}
+                    {money(
+                      trouvee.sourceAmount,
+                      trouvee.sourceCurrency === 'XOF' ? 0 : 2,
+                      trouvee.sourceCurrency,
+                    )}{' '}
+                    pour {trouvee.reference} ?
                   </Text>
-                ) : null;
-              })()
+                  <Text style={T.caption}>
+                    Le change sera exécuté immédiatement et la caisse mouvementée.
+                  </Text>
+                  {/* ⚠️ Plus aucun justificatif n'est conservé : cette
+                      référence est la seule trace vérifiable d'un paiement
+                      mobile money. La saisir dès qu'elle existe. */}
+                  <Field
+                    label="Référence du paiement (si mobile money)"
+                    value={referencePaiement}
+                    onChangeText={setReferencePaiement}
+                    placeholder="relevée sur le téléphone du client"
+                    autoCapitalize="none"
+                  />
+                  <Button
+                    label={busy ? 'Encaissement…' : 'Confirmer l’encaissement'}
+                    onPress={() => void encaisser(trouvee)}
+                    variant="accent"
+                    disabled={busy}
+                  />
+                  <Button
+                    label="Annuler"
+                    onPress={() => {
+                      setAEncaisser(false);
+                      setReferencePaiement('');
+                    }}
+                    variant="ghost"
+                  />
+                </View>
+              ) : (
+                <Button
+                  label="Encaisser — j’ai reçu les fonds"
+                  onPress={() => {
+                    setAEncaisser(true);
+                    setReferencePaiement('');
+                    setNotice(null);
+                  }}
+                  disabled={busy}
+                />
+              )
             ) : trouvee.status === 'CHANGE_EXECUTE' ? (
               <Button
                 label="Marquer les fonds disponibles"
@@ -368,74 +403,6 @@ export default function Service(): ReactNode {
           onClose={() => setScanOuvert(false)}
         />
       ) : null}
-
-      {/* ---------------------------------------------- reçus à contrôler -- */}
-      <Card style={styles.block}>
-        <Text style={T.title}>Reçus à contrôler ({recus.length})</Text>
-        {recus.length === 0 ? (
-          <Text style={T.bodyMute}>
-            Aucun reçu en attente. Les paiements Wave se confirment seuls, sans passer ici.
-          </Text>
-        ) : (
-          recus.map((recu) => (
-            <View key={recu.id} style={styles.row}>
-              <Text style={T.label}>{recu.transaction.reference}</Text>
-              <Text style={T.rate}>
-                {money(
-                  recu.transaction.sourceAmount,
-                  recu.transaction.sourceCurrency === 'XOF' ? 0 : 2,
-                  recu.transaction.sourceCurrency,
-                )}
-              </Text>
-              <Text style={T.caption}>
-                attendu — à comparer au justificatif avant de valider
-              </Text>
-
-              {aRejeter === recu.id ? (
-                <View style={styles.confirm}>
-                  <Field
-                    label="Motif du rejet"
-                    value={motif}
-                    onChangeText={setMotif}
-                    placeholder="Montant inférieur au dû, reçu illisible…"
-                  />
-                  <Button
-                    label={busy ? 'Envoi…' : 'Confirmer le rejet'}
-                    onPress={() => void rejeter(recu)}
-                    variant="accent"
-                    disabled={busy || motif.trim().length < 10}
-                  />
-                  <Button
-                    label="Annuler"
-                    onPress={() => {
-                      setARejeter(null);
-                      setMotif('');
-                    }}
-                    variant="ghost"
-                  />
-                </View>
-              ) : (
-                <View style={styles.actions}>
-                  <Button
-                    label="Valider (exécute le change)"
-                    onPress={() => void valider(recu)}
-                    disabled={busy}
-                  />
-                  <Button
-                    label="Rejeter"
-                    onPress={() => {
-                      setARejeter(recu.id);
-                      setMotif('');
-                      setError(null);
-                    }}
-                    variant="ghost"
-                  />
-                </View>
-              )}
-            </View>
-          ))
-        )}
-      </Card>
 
       {/* ------------------------------------------------ fonds à envoyer -- */}
       <Card style={styles.block}>

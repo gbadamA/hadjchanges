@@ -213,6 +213,25 @@ export interface ReceiptRow {
 export const transactions = {
   list: (token: string, params: Record<string, string> = {}) =>
     apiFetch<TransactionRow[]>(`/transactions?${new URLSearchParams(params).toString()}`, { token }),
+  /** Retrouve une opération par sa référence — recherche EXACTE côté API. */
+  byReference: (reference: string, token: string) =>
+    apiFetch<TransactionRow[]>(
+      `/transactions?reference=${encodeURIComponent(reference)}`,
+      { token },
+    ),
+  /**
+   * Encaissement au comptoir : l'agent atteste avoir reçu les fonds.
+   *
+   * ⚠️ Exécute le change et mouvemente la caisse. `declaredRef` est la seule
+   * trace vérifiable d'un paiement mobile money, aucun justificatif n'étant
+   * plus conservé.
+   */
+  collect: (id: string, input: { declaredAmount?: number; declaredRef?: string }, token: string) =>
+    apiFetch<TransactionRow>(`/transactions/${id}/encaissement`, {
+      method: 'POST',
+      body: input,
+      token,
+    }),
   receiptQueue: (token: string, status = 'EN_ATTENTE') =>
     apiFetch<ReceiptRow[]>(`/transactions/receipts/queue?status=${status}`, { token }),
   approveReceipt: (id: string, declaredAmount: number | undefined, token: string) =>

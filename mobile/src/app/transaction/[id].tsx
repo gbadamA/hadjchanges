@@ -1,10 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
-import { api, ApiError, type PickedFile, type PublicSettings } from '../../api';
+import { api, ApiError, type PublicSettings } from '../../api';
 import { useAuth } from '../../auth';
 import { downloadAndShare } from '../../download';
 import { DEPOSIT_LABEL, money, type Transaction } from '../../models';
@@ -91,34 +90,6 @@ export default function TransactionDetail(): ReactNode {
     // Au réveil du serveur, on relit : le statut a pu changer pendant la veille.
     () => void load(),
   );
-
-  const sendReceipt = async (): Promise<void> => {
-    if (!accessToken || !transaction) return;
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setError('Autorisez l’accès aux photos pour importer votre reçu.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
-    if (result.canceled || result.assets.length === 0) return;
-
-    const asset = result.assets[0];
-    const file: PickedFile = {
-      uri: asset.uri,
-      name: asset.fileName ?? 'recu.jpg',
-      type: asset.mimeType ?? 'image/jpeg',
-    };
-
-    setBusy(true);
-    setError(null);
-    try {
-      setTransaction(await api.submitReceipt(transaction.id, file, accessToken));
-    } catch (cause) {
-      setError(cause instanceof ApiError ? cause.message : 'Envoi du reçu impossible.');
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const getJustificatif = async (): Promise<void> => {
     if (!accessToken || !transaction) return;
@@ -251,10 +222,15 @@ export default function TransactionDetail(): ReactNode {
           </Card>
         ) : null}
 
+        {/* ⚠️ PLUS AUCUN IMPORT DE REÇU. Le client payait, photographiait son
+            justificatif et attendait qu'un agent le contrôle. Désormais il
+            paie, se présente, et l'agent constate en scannant son code. Ce qui
+            disparaît, c'est l'attente et la photo — pas la preuve : l'agent
+            relève la référence du paiement et atteste, nominativement. */}
         {awaitingReceipt && !payableEnLigne ? (
           <Card style={styles.action}>
             <Text style={T.title}>
-              {transaction.status === 'RECU_REJETE' ? 'Déposez un nouveau reçu' : 'Effectuez votre dépôt'}
+              {depositNumber ? 'Effectuez votre dépôt' : 'Présentez-vous en agence'}
             </Text>
             {lastReceipt?.rejectReason ? (
               <Text style={[T.bodyMute, { color: C.stop }]}>{lastReceipt.rejectReason}</Text>
@@ -274,15 +250,20 @@ export default function TransactionDetail(): ReactNode {
               </View>
             ) : (
               <Text style={T.bodyMute}>
-                Présentez-vous en agence avec le montant, muni de votre référence.
+                Venez avec le montant exact :{' '}
+                {money(
+                  transaction.sourceAmount,
+                  transaction.sourceCurrency === 'XOF' ? 0 : 2,
+                  transaction.sourceCurrency,
+                )}
+                .
               </Text>
             )}
-            <Button
-              label={busy ? 'Envoi…' : 'Importer mon reçu'}
-              onPress={() => void sendReceipt()}
-              variant="accent"
-              disabled={busy}
-            />
+            <Text style={T.bodyMute}>
+              {depositNumber
+                ? 'Une fois le dépôt fait, présentez le code ci-dessous à nos guichets : l’agent le scanne et votre change est exécuté immédiatement.'
+                : 'Présentez le code ci-dessous à nos guichets : l’agent le scanne et votre change est exécuté immédiatement.'}
+            </Text>
             <Button label="Annuler l’opération" onPress={() => void cancel()} variant="ghost" />
           </Card>
         ) : null}

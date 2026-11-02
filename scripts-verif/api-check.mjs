@@ -1843,7 +1843,17 @@ async function main() {
       body: { channel: 'EMAIL' },
     });
     check('l’essai de courriel aboutit (200)', essai.status === 200, `reçu ${essai.status}`);
-    check('il est annoncé comme remis', essai.data?.delivered === true, JSON.stringify(essai.data));
+
+    // ⚠️ Mailpit est une dépendance de DÉVELOPPEMENT, pas du produit. Quand il
+    // ne tourne pas, l'API a raison de dire « non remis » : c'est le contrôle
+    // qui n'a rien à prouver. Le contrôle voisin (lecture de la boîte) le
+    // détectait déjà et s'ignorait ; celui-ci échouait, et faisait passer une
+    // suite saine pour cassée à chaque session où le conteneur dormait.
+    if (/ECONNREFUSED|ENOTFOUND|ETIMEDOUT/.test(JSON.stringify(essai.data ?? ''))) {
+      skip('remise du courriel annoncée', 'relais SMTP injoignable (Mailpit arrêté ?)');
+    } else {
+      check('il est annoncé comme remis', essai.data?.delivered === true, JSON.stringify(essai.data));
+    }
 
     const essaiMuet = await call('POST', '/notifications/test', {
       token: admin.accessToken,

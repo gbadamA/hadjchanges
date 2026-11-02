@@ -279,7 +279,7 @@ export class CheckoutService {
       return { issue: 'DEJA_PAYEE', reference: transaction.reference };
     }
 
-    this.machine.assertPreuveFournisseur(transaction.status, TransactionStatus.RECU_VALIDE);
+    this.machine.assertPaiementProuve(transaction.status, TransactionStatus.RECU_VALIDE);
 
     const [, mise] = await this.prisma.$transaction([
       this.prisma.paymentCheckout.updateMany({

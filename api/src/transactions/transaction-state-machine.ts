@@ -57,24 +57,30 @@ const COUNTER_TRANSITIONS: Partial<Record<TransactionStatus, TransactionStatus[]
 };
 
 /**
- * Transitions **supplémentaires** sur preuve de paiement d'un fournisseur.
+ * Transitions **supplémentaires** quand le paiement est prouvé autrement que
+ * par un justificatif importé.
  *
- * Quand un opérateur de paiement confirme l'encaissement par un événement
- * signé, il n'y a **pas de reçu à contrôler** : la preuve est la signature.
- * L'opération passe donc directement de « en attente de paiement » à
- * « paiement prouvé », sans l'étape `RECU_SOUMIS` qui n'a plus d'objet.
+ * Deux preuves, une seule règle, parce que la machine à états se moque de
+ * l'origine de la preuve — seul le service appelant en répond :
+ *  - **l'événement signé d'un opérateur de paiement** : la signature tient
+ *    lieu de preuve, il n'y a aucun document à contrôler ;
+ *  - **l'attestation d'un agent au comptoir** : il a le client devant lui,
+ *    retrouve l'opération par son code et constate le paiement.
  *
- * ⚠️ Déclaré à part, et surtout **atteignable uniquement par
- * `assertPreuveFournisseur`**, exactement pour la raison qui vaut déjà pour le
- * guichet : ajouter `CREEE → RECU_VALIDE` à la table commune permettrait à
- * n'importe quel appel de déclarer une opération payée sans qu'aucun argent
- * n'ait été vu. Une méthode au nom distinct ne peut pas être atteinte par
- * erreur, contrairement à un drapeau booléen qu'on oublie de passer.
+ * Dans les deux cas l'étape `RECU_SOUMIS` n'a plus d'objet : on passe
+ * directement de « en attente de paiement » à « paiement prouvé ».
  *
- * Le rejet d'un reçu n'est pas une impasse ici non plus : un client dont le
- * justificatif a été refusé peut payer par le fournisseur à la place.
+ * ⚠️ Déclaré à part, et **atteignable uniquement par `assertPaiementProuve`**,
+ * exactement pour la raison qui vaut déjà pour le guichet : ajouter
+ * `CREEE → RECU_VALIDE` à la table commune permettrait à n'importe quel appel
+ * de déclarer une opération payée sans qu'aucun argent n'ait été vu. Une
+ * méthode au nom distinct ne peut pas être atteinte par erreur, contrairement
+ * à un drapeau booléen qu'on oublie de passer.
+ *
+ * Un justificatif rejeté n'est pas une impasse : le client peut payer par le
+ * fournisseur, ou se présenter au comptoir.
  */
-const PROVIDER_TRANSITIONS: Partial<Record<TransactionStatus, TransactionStatus[]>> = {
+const PREUVE_TRANSITIONS: Partial<Record<TransactionStatus, TransactionStatus[]>> = {
   [TransactionStatus.CREEE]: [TransactionStatus.RECU_VALIDE],
   [TransactionStatus.RECU_SOUMIS]: [TransactionStatus.RECU_VALIDE],
   [TransactionStatus.RECU_REJETE]: [TransactionStatus.RECU_VALIDE],
@@ -83,14 +89,17 @@ const PROVIDER_TRANSITIONS: Partial<Record<TransactionStatus, TransactionStatus[
 @Injectable()
 export class TransactionStateMachine {
   /**
-   * Autorise une transition **sur preuve de paiement signée**.
+   * Autorise une transition **sur preuve de paiement**.
    *
-   * ⚠️ À n'appeler que depuis le traitement d'un événement dont la signature a
-   * été vérifiée. Aucun contrôleur, aucun service métier ne doit l'appeler :
-   * ce serait contourner le contrôle du paiement.
+   * ⚠️ Deux appelants légitimes, et deux seulement :
+   *  - le traitement d'un événement dont la **signature a été vérifiée** ;
+   *  - l'**attestation d'un agent** qui a le client devant lui.
+   *
+   * Partout ailleurs, l'appeler reviendrait à déclarer une opération payée sans
+   * que personne n'ait vu l'argent.
    */
-  assertPreuveFournisseur(from: TransactionStatus, to: TransactionStatus): void {
-    if (PROVIDER_TRANSITIONS[from]?.includes(to)) return;
+  assertPaiementProuve(from: TransactionStatus, to: TransactionStatus): void {
+    if (PREUVE_TRANSITIONS[from]?.includes(to)) return;
     // La table commune reste valable : une opération déjà au bon état y passe.
     if (TRANSITIONS[from].includes(to)) return;
     throw new ConflictException(

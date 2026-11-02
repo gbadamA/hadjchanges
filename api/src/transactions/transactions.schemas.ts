@@ -70,6 +70,21 @@ export const transactionListSchema = z.object({
   take: z.coerce.number().int().positive().max(200).default(50),
 });
 
+/**
+ * Encaissement au comptoir, attesté par un agent.
+ *
+ * Les deux champs sont facultatifs : le montant tombe sur celui de l'opération
+ * s'il n'est pas repris, et la référence du paiement n'existe pas pour des
+ * espèces. ⚠️ Mais elle est la SEULE trace vérifiable quand le client a payé
+ * par mobile money : la saisir dès qu'elle existe.
+ */
+export const counterCollectionSchema = z.object({
+  declaredAmount: z.coerce.number().positive().optional(),
+  declaredRef: z.string().trim().min(3).max(64).optional(),
+});
+
+export type CounterCollectionInput = z.infer<typeof counterCollectionSchema>;
+
 export const cancelSchema = z.object({
   reason: z.string().trim().max(300).optional(),
 });

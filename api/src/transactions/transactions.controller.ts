@@ -24,12 +24,14 @@ import { CounterService } from './counter.service';
 import { ReceiptsService, type ReceiptQueueRow } from './receipts.service';
 import {
   cancelSchema,
+  counterCollectionSchema,
   createTransactionSchema,
   exportQuerySchema,
   receiptRejectSchema,
   receiptReviewSchema,
   transactionListSchema,
   type CancelInput,
+  type CounterCollectionInput,
   type CreateTransactionInput,
   type ReceiptRejectInput,
 } from './transactions.schemas';
@@ -192,11 +194,40 @@ export class TransactionsController {
     response.send(buffer);
   }
 
+  /**
+   * Encaissement au comptoir — le parcours normal.
+   *
+   * L'agent a retrouvé l'opération par son code (QR scanné ou numéro dicté),
+   * il constate le paiement et l'atteste. Le change s'exécute dans la foulée.
+   *
+   * ⚠️ Réservé aux agents : un client qui pourrait l'appeler déclarerait ses
+   * propres opérations payées.
+   */
+  @Roles(...STAFF)
+  @Post(':id/encaissement')
+  @ApiOperation({ summary: 'Attester au comptoir la réception des fonds, et exécuter le change.' })
+  @ApiZodBody('CounterCollection', counterCollectionSchema)
+  collect(
+    @Param('id') id: string,
+    @ZBody(counterCollectionSchema) input: CounterCollectionInput,
+    @CurrentUser() agent: AuthUser,
+    @Req() request: Request,
+  ): Promise<TransactionView> {
+    return this.receipts.attester(id, input, agent, request.ip);
+  }
+
+  /**
+   * ⚠️ Parcours HISTORIQUE, conservé pour les opérations déjà en cours.
+   *
+   * Le client n'importe plus de justificatif : l'application ne propose plus
+   * ce geste. La preuve est désormais l'attestation d'un agent, ou l'événement
+   * signé d'un opérateur de paiement.
+   */
   @Roles(Role.CLIENT)
   @Post(':id/receipt')
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('receipt'))
-  @ApiOperation({ summary: 'Déposer la preuve de paiement.' })
+  @ApiOperation({ summary: 'Déposer la preuve de paiement (parcours historique).' })
   submitReceipt(
     @Param('id') id: string,
     @UploadedFile() file: UploadedDocument | undefined,

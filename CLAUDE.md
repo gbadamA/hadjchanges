@@ -107,21 +107,36 @@ agence de voyage). Vide = le client lui-même.
 ## 5 bis. Le flux de transaction (cœur du produit)
 
 ```
-CREEE ──reçu importé──► RECU_SOUMIS ──opérateur──┬─► RECU_VALIDE ─exécution─► CHANGE_EXECUTE
-  │                                              │                                  │
-  └─► ANNULEE                                    └─► RECU_REJETE ─(redépôt)─► RECU_SOUMIS
-                                                                                    ▼
-                                                                        PRETE_POUR_RETRAIT
-                                                                                    ▼
-                                                                              CLOTUREE  (+ PDF)
+         ┌─ agent : code scanné ou numéro dicté, paiement constaté ─┐
+CREEE ───┤                                                          ├─► RECU_VALIDE
+  │      └─ ou événement SIGNÉ de l'opérateur de paiement (Wave) ───┘        │
+  │                                                                     exécution
+  └─► ANNULEE                                                               ▼
+                                                                    CHANGE_EXECUTE
+                                                                            ▼
+                                                                  PRETE_POUR_RETRAIT
+                                                                            ▼
+                                                                      CLOTUREE  (+ PDF)
 ```
 
 1. Le client simule (devise source → cible, montant) : taux et commission affichés **avant** tout engagement.
 2. Il choisit son mode de dépôt (Orange Money / MTN / Moov / Wave / CB).
-3. Il paie de son côté, puis **importe le reçu** (photo ou PDF) → `RECU_SOUMIS`.
-4. Un opérateur contrôle le reçu au dashboard : **valide** (`RECU_VALIDE`) ou **rejette** (motif transmis).
+3. **Le paiement se prouve de deux façons, jamais par une photo de reçu :**
+   - **Wave** : le client paie dans l'application, et l'**événement signé** confirme l'encaissement
+     automatiquement, à distance. Personne n'intervient.
+   - **Tout le reste** : le client se présente au bureau. L'agent retrouve l'opération en
+     **scannant le QR** affiché sur le téléphone du client, ou en saisissant son numéro ; il
+     constate le paiement ou reçoit les espèces, et l'**atteste**.
+4. L'attestation porte l'identité de l'agent, l'horodatage, et la **référence du paiement** relevée
+   sur le téléphone du client — c'est la seule trace vérifiable, puisque plus aucun document n'est
+   conservé. ⚠️ Arbitrage assumé par l'exploitant : moins solide qu'une pièce gardée en cas de
+   litige ou de contrôle LCB-FT.
 5. Le change s'exécute au taux **verrouillé lors de la simulation**, mouvements de caisse générés.
 6. Retrait/versement (espèces en agence, mobile money, virement) → `CLOTUREE` + justificatif PDF.
+
+> **Parcours historique.** `RECU_SOUMIS` / `RECU_REJETE` et l'import de justificatif existent
+> encore côté API, pour les opérations déjà engagées. L'application mobile ne propose plus ce
+> geste, et aucun nouveau justificatif n'est créé.
 
 Les transitions invalides sont refusées **côté service** par une state machine, jamais par la base.
 

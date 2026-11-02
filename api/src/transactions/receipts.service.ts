@@ -13,7 +13,11 @@ import { StorageService } from '../storage/storage.service';
 import type { UploadedDocument } from '../kyc/kyc.service';
 import { ExchangeExecutor } from './exchange-executor';
 import { TransactionStateMachine } from './transaction-state-machine';
-import type { ReceiptRejectInput, ReceiptReviewInput } from './transactions.schemas';
+import type {
+  CounterCollectionInput,
+  ReceiptRejectInput,
+  ReceiptReviewInput,
+} from './transactions.schemas';
 import { toTransactionView, transactionInclude, type TransactionView } from './transactions.view';
 import { TransactionsGateway } from '../realtime/transactions.gateway';
 
@@ -99,6 +103,109 @@ export class ReceiptsService {
     return this.realtime.publishAndView(updated);
   }
 
+  /**
+   * **Encaissement au comptoir** — le parcours normal depuis que le reçu photo
+   * a disparu.
+   *
+   * L'agent retrouve l'opération par son code (QR scanné ou numéro dicté),
+   * constate le paiement ou reçoit les espèces, et l'atteste. Le change
+   * s'exécute dans la foulée, exactement comme à la validation d'un
+   * justificatif : laisser une opération « payée » sans change exécuté créerait
+   * une file d'attente fantôme que personne ne relève.
+   *
+   * ⚠️ Ce qui remplace le document : l'identité de l'agent, l'horodatage, et
+   * `declaredRef` — la référence du paiement relevée sur le téléphone du
+   * client. C'est moins qu'une pièce conservée en cas de litige ou de contrôle
+   * LCB-FT, et c'est un arbitrage assumé par l'exploitant. Raison de plus pour
+   * que la référence soit saisie dès qu'elle existe.
+   */
+  async attester(
+    transactionId: string,
+    input: CounterCollectionInput,
+    agent: AuthUser,
+    ip?: string,
+  ): Promise<TransactionView> {
+    const transaction = await this.prisma.transaction.findUnique({
+      where: { id: transactionId },
+      select: {
+        id: true,
+        reference: true,
+        status: true,
+        clientId: true,
+        sourceAmount: true,
+        agencyId: true,
+        depositMethod: true,
+      },
+    });
+    if (!transaction) throw new NotFoundException('Transaction introuvable.');
+
+    // ⚠️ Un opérateur n'atteste que pour son agence. Sans ce contrôle, un
+    // agent pourrait encaisser une opération rattachée ailleurs, et le
+    // mouvement de caisse partirait de la mauvaise encaisse.
+    if (
+      agent.role === Role.OPERATEUR &&
+      agent.agencyId &&
+      transaction.agencyId &&
+      transaction.agencyId !== agent.agencyId
+    ) {
+      throw new ConflictException(
+        'Cette opération est rattachée à une autre agence : elle doit y être encaissée.',
+      );
+    }
+
+    this.machine.assertPaiementProuve(transaction.status, TransactionStatus.RECU_VALIDE);
+
+    await this.prisma.$transaction([
+      // La preuve est écrite DÉJÀ VALIDÉE : il n'y a personne d'autre à
+      // attendre, l'agent est à la fois celui qui constate et celui qui valide.
+      this.prisma.paymentReceipt.create({
+        data: {
+          transactionId,
+          fileUrl: null,
+          mimeType: null,
+          declaredAmount: input.declaredAmount ?? transaction.sourceAmount,
+          declaredRef: input.declaredRef ?? null,
+          status: ReceiptStatus.VALIDE,
+          validatedById: agent.id,
+          validatedAt: new Date(),
+        },
+      }),
+      this.prisma.transaction.update({
+        where: { id: transactionId },
+        data: {
+          status: TransactionStatus.RECU_VALIDE,
+          receiptSubmittedAt: new Date(),
+          receiptReviewedAt: new Date(),
+        },
+      }),
+    ]);
+
+    await this.audit.record({
+      userId: agent.id,
+      action: 'receipt.attestation-comptoir',
+      entity: 'Transaction',
+      entityId: transactionId,
+      before: { status: transaction.status },
+      after: {
+        reference: transaction.reference,
+        modeDepot: transaction.depositMethod,
+        montantConstate: (input.declaredAmount ?? transaction.sourceAmount).toString(),
+        referencePaiement: input.declaredRef ?? null,
+      },
+      ip,
+    });
+
+    const executed = await this.executor.execute(transactionId, agent, ip);
+
+    await this.notifications.notify({
+      userId: transaction.clientId,
+      title: 'Paiement confirmé',
+      body: `Votre paiement a été confirmé au comptoir et le change exécuté (${executed.reference}).`,
+      deepLink: `/transaction/${transactionId}`,
+    });
+    return executed;
+  }
+
   /** File de contrôle du dashboard (cahier §3.1 : « file dédiée »). */
   async queue(viewer: AuthUser, status: ReceiptStatus): Promise<ReceiptQueueRow[]> {
     const receipts = await this.prisma.paymentReceipt.findMany({
@@ -135,6 +242,16 @@ export class ReceiptsService {
 
     const isOwner = receipt.transaction.clientId === viewer.id;
     if (!isOwner && viewer.role === Role.CLIENT) throw new NotFoundException('Reçu introuvable.');
+
+    // ⚠️ Une attestation d'agent n'a pas de fichier. Le dire explicitement
+    // plutôt que de renvoyer un document vide : l'écran doit pouvoir afficher
+    // « constaté au comptoir par X », pas un cadre blanc qui laisse croire à
+    // un justificatif illisible.
+    if (!receipt.fileUrl || !receipt.mimeType) {
+      throw new NotFoundException(
+        'Cette preuve est une attestation d’agent : elle ne comporte aucun document.',
+      );
+    }
 
     return { buffer: await this.storage.read(receipt.fileUrl), mimeType: receipt.mimeType };
   }

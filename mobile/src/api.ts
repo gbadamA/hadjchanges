@@ -351,10 +351,6 @@ export const api = {
   cancelTransaction: (id: string, token: string): Promise<Transaction> =>
     request<Transaction>(`/transactions/${id}/cancel`, { method: 'POST', body: {}, token }),
 
-  /** Dépôt de la preuve de paiement (photo ou PDF du reçu). */
-  submitReceipt: (id: string, receipt: PickedFile, token: string): Promise<Transaction> =>
-    upload<Transaction>(`/transactions/${id}/receipt`, { token, fields: {}, files: { receipt } }),
-
   /** Dépôt de la pièce d'identité — le selfie est facultatif mais recommandé. */
   submitKyc: (
     input: { type: string; documentNumber?: string; document: PickedFile; selfie?: PickedFile },
@@ -455,8 +451,24 @@ export const api = {
   reconcile: (token: string): Promise<{ versements: number; encaissements: number }> =>
     request('/payments/reconciliation', { method: 'POST', body: {}, token }),
 
-  receiptQueue: (token: string, status = 'EN_ATTENTE'): Promise<ReceiptQueueRow[]> =>
-    request<ReceiptQueueRow[]>(`/transactions/receipts/queue?status=${status}`, { token }),
+  /**
+   * Encaissement au comptoir : l'agent atteste avoir reçu les fonds, et le
+   * change s'exécute dans la foulée.
+   *
+   * ⚠️ `referencePaiement` est la SEULE trace vérifiable quand le client a
+   * payé par mobile money — il n'y a plus de justificatif conservé. À saisir
+   * dès qu'elle existe.
+   */
+  collect: (
+    transactionId: string,
+    input: { declaredAmount?: number; declaredRef?: string },
+    token: string,
+  ): Promise<Transaction> =>
+    request<Transaction>(`/transactions/${transactionId}/encaissement`, {
+      method: 'POST',
+      body: input,
+      token,
+    }),
 
   /**
    * Retrouve une opération par sa référence, scannée ou saisie au comptoir.
@@ -482,21 +494,6 @@ export const api = {
     request<Transaction>(`/transactions/${transactionId}/close`, {
       method: 'POST',
       body: {},
-      token,
-    }),
-
-  /** ⚠️ Valider un reçu EXÉCUTE le change et mouvemente la caisse. */
-  approveReceipt: (receiptId: string, token: string): Promise<Transaction> =>
-    request<Transaction>(`/transactions/receipts/${receiptId}/approve`, {
-      method: 'POST',
-      body: {},
-      token,
-    }),
-
-  rejectReceipt: (receiptId: string, reason: string, token: string): Promise<Transaction> =>
-    request<Transaction>(`/transactions/receipts/${receiptId}/reject`, {
-      method: 'POST',
-      body: { reason },
       token,
     }),
 };
@@ -550,13 +547,4 @@ export interface PayoutView {
   codeEchec: string | null;
   idFournisseur: string | null;
   creeLe: string;
-}
-
-export interface ReceiptQueueRow {
-  id: string;
-  status: string;
-  createdAt: string;
-  declaredAmount: string | null;
-  declaredRef: string | null;
-  transaction: Transaction;
 }
