@@ -22,17 +22,8 @@ import { Button, Card, EmptyState, ErrorBanner, Field, Loader, Screen } from '..
  * double validation à deux personnes : sur un téléphone perdu ou prêté, un
  * compte ouvert suffit. C'est un choix assumé, pas un oubli.
  */
-/**
- * États depuis lesquels un agent peut encaisser au comptoir.
- *
- * Les mêmes que ceux acceptés par l'API : un justificatif déjà déposé ou
- * refusé n'empêche pas le client de venir payer en personne.
- */
-const EN_ATTENTE_DE_PAIEMENT: ReadonlyArray<Transaction['status']> = [
-  'CREEE',
-  'RECU_SOUMIS',
-  'RECU_REJETE',
-];
+/** États depuis lesquels un agent peut encaisser — les mêmes que l'API. */
+const EN_ATTENTE_DE_PAIEMENT: ReadonlyArray<Transaction['status']> = ['CREEE'];
 
 export default function Service(): ReactNode {
   const { profile, accessToken } = useAuth();

@@ -67,9 +67,7 @@ export const C = {
  */
 export const STATUS = {
   CREEE: '#5A6B7D', // gris — en attente d'action du client
-  RECU_SOUMIS: '#F59E0B', // ambre — à traiter par l'opérateur
-  RECU_VALIDE: '#4757C9', // bleu-indigo — contrôlé, change à exécuter
-  RECU_REJETE: '#B3261E', // rouge sombre — à redéposer
+  PAIEMENT_CONFIRME: '#4757C9', // bleu-indigo — payé, change à exécuter
   CHANGE_EXECUTE: '#1B2A8F', // bleu du logo — opération faite
   PRETE_POUR_RETRAIT: '#D81E27', // rouge du logo — la valeur est disponible
   CLOTUREE: '#12B76A', // vert — terminé
@@ -78,10 +76,8 @@ export const STATUS = {
 
 /** Ce que chaque statut veut dire pour le client, en une phrase. */
 export const STATUS_HINT: Record<keyof typeof STATUS, string> = {
-  CREEE: 'Effectuez votre dépôt, puis importez le reçu.',
-  RECU_SOUMIS: 'Votre reçu est en cours de contrôle par un agent.',
-  RECU_VALIDE: 'Paiement confirmé, le change va être exécuté.',
-  RECU_REJETE: 'Votre reçu a été refusé. Déposez-en un nouveau.',
+  CREEE: 'Payez, puis présentez votre code à nos guichets.',
+  PAIEMENT_CONFIRME: 'Paiement confirmé, le change va être exécuté.',
   CHANGE_EXECUTE: 'Le change est fait. Vos fonds sont en préparation.',
   PRETE_POUR_RETRAIT: 'Vos fonds sont disponibles.',
   CLOTUREE: 'Opération terminée.',

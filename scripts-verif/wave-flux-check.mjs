@@ -285,9 +285,9 @@ async function main() {
 
     const apres = await appel('GET', `/transactions/${operation.id}`, { token });
     verifier(
-      'opération passée à RECU_VALIDE sans aucun reçu déposé',
-      apres.data.status === 'RECU_VALIDE',
-      'RECU_VALIDE',
+      'opération passée à PAIEMENT_CONFIRME sans aucune intervention humaine',
+      apres.data.status === 'PAIEMENT_CONFIRME',
+      'PAIEMENT_CONFIRME',
       apres.data.status,
     );
     verifier(

@@ -14,7 +14,7 @@ import { useAuth } from '../../../lib/auth';
 const FILTERS: Array<{ value: TransactionStatus | 'TOUTES'; label: string }> = [
   { value: 'TOUTES', label: 'Toutes' },
   { value: 'CREEE', label: 'En attente de paiement' },
-  { value: 'RECU_SOUMIS', label: 'Reçu à contrôler' },
+  { value: 'PAIEMENT_CONFIRME', label: 'Paiement confirmé' },
   { value: 'CHANGE_EXECUTE', label: 'Change exécuté' },
   { value: 'PRETE_POUR_RETRAIT', label: 'Prêtes pour retrait' },
   { value: 'CLOTUREE', label: 'Clôturées' },

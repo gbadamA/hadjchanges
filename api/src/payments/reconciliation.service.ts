@@ -169,8 +169,6 @@ export class ReconciliationService {
           status: {
             in: [
               TransactionStatus.CREEE,
-              TransactionStatus.RECU_SOUMIS,
-              TransactionStatus.RECU_REJETE,
             ],
           },
         },

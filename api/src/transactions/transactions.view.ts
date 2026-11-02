@@ -46,12 +46,12 @@ export interface TransactionView {
   createdAt: string;
   agency: { id: string; name: string; city: string } | null;
   client?: { id: string; firstName: string; lastName: string; phone: string };
-  receipts: Array<{
+  /** Attestations de paiement : qui a constaté, quand, et sous quelle référence. */
+  proofs: Array<{
     id: string;
-    status: string;
-    rejectReason: string | null;
-    createdAt: string;
-    validatedAt: string | null;
+    declaredAmount: string | null;
+    declaredRef: string | null;
+    attestedAt: string;
   }>;
   timeline: TimelineStep[];
 }
@@ -69,8 +69,7 @@ export function toTransactionView(
 ): TransactionView {
   const dates: Partial<Record<TransactionStatus, Date | null>> = {
     CREEE: transaction.createdAt,
-    RECU_SOUMIS: transaction.receiptSubmittedAt,
-    RECU_VALIDE: transaction.receiptReviewedAt,
+    PAIEMENT_CONFIRME: transaction.paidAt,
     CHANGE_EXECUTE: transaction.executedAt,
     PRETE_POUR_RETRAIT: transaction.readyAt,
     CLOTUREE: transaction.closedAt,
@@ -117,12 +116,11 @@ export function toTransactionView(
     createdAt: transaction.createdAt.toISOString(),
     agency: transaction.agency,
     ...(options.withClient ? { client: transaction.client } : {}),
-    receipts: transaction.receipts.map((receipt) => ({
-      id: receipt.id,
-      status: receipt.status,
-      rejectReason: receipt.rejectReason,
-      createdAt: receipt.createdAt.toISOString(),
-      validatedAt: receipt.validatedAt?.toISOString() ?? null,
+    proofs: transaction.receipts.map((preuve) => ({
+      id: preuve.id,
+      declaredAmount: preuve.declaredAmount?.toString() ?? null,
+      declaredRef: preuve.declaredRef,
+      attestedAt: preuve.attestedAt.toISOString(),
     })),
     timeline,
   };

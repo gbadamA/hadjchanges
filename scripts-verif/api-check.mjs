@@ -774,7 +774,7 @@ async function main() {
       `${locked.data?.targetAmount} vs ${created.data?.targetAmount}`,
     );
     check('une agence lui est rattachée', created.data?.agency?.id !== undefined);
-    check('la timeline compte les 6 étapes du parcours', created.data?.timeline?.length === 6);
+    check('la timeline compte les 5 étapes du parcours', created.data?.timeline?.length === 5);
 
     // Un verrou ne sert qu'une fois.
     const reused = await call('POST', '/transactions', {
@@ -788,39 +788,13 @@ async function main() {
     const early = await call('POST', `/transactions/${txId}/ready`, { token: admin.accessToken });
     check('impossible de sauter au retrait sans exécuter le change (409)', early.status === 409, `reçu ${early.status}`);
 
-    const noProof = await upload(`/transactions/${txId}/receipt`, { token: verifie.accessToken });
-    check('déposer un reçu vide est refusé (400)', noProof.status === 400, `reçu ${noProof.status}`);
-
-    const submitted = await upload(`/transactions/${txId}/receipt`, {
+    // ⚠️ Plus de dépôt de justificatif : un client ne peut pas déclarer sa
+    // propre opération payée, c'est l'agent qui constate.
+    const parClient = await call('POST', `/transactions/${txId}/encaissement`, {
       token: verifie.accessToken,
-      files: { receipt: { content: PNG_1PX, type: 'image/png', name: 'recu.png' } },
+      body: {},
     });
-    check('le dépôt du reçu est accepté (201)', submitted.status === 201, `reçu ${submitted.status}`);
-    check('la transaction passe en contrôle de reçu', submitted.data?.status === 'RECU_SOUMIS');
-
-    const queue = await call('GET', '/transactions/receipts/queue', { token: admin.accessToken });
-    const waiting = (queue.data ?? []).find((row) => row.transaction.id === txId);
-    check('le reçu apparaît dans la file de contrôle', waiting !== undefined);
-    check('la file porte le montant attendu et le client', waiting?.transaction?.client?.id !== undefined);
-
-    const clientQueue = await call('GET', '/transactions/receipts/queue', { token: verifie.accessToken });
-    check('un client ne voit pas la file des reçus (403)', clientQueue.status === 403, `reçu ${clientQueue.status}`);
-
-    // Rejet, puis redépôt : c'est une boucle, pas une impasse.
-    const motif = 'Le montant du reçu ne correspond pas au montant attendu.';
-    const rejected = await call('POST', `/transactions/receipts/${waiting?.id}/reject`, {
-      token: admin.accessToken,
-      body: { reason: motif },
-    });
-    check('le rejet motivé du reçu est accepté (201)', rejected.status === 201, `reçu ${rejected.status}`);
-    check('la transaction revient au client', rejected.data?.status === 'RECU_REJETE');
-
-    const redeposit = await upload(`/transactions/${txId}/receipt`, {
-      token: verifie.accessToken,
-      files: { receipt: { content: PNG_1PX, type: 'image/png', name: 'recu-2.png' } },
-    });
-    check('après rejet, le client peut redéposer (201)', redeposit.status === 201, `reçu ${redeposit.status}`);
-    check('la transaction conserve ses deux reçus', (redeposit.data?.receipts ?? []).length === 2);
+    check('un client ne peut pas encaisser lui-même (403)', parClient.status === 403, `reçu ${parClient.status}`);
 
     // Soldes de caisse AVANT exécution, pour vérifier le mouvement réel.
     const agencyId = created.data?.agency?.id;
@@ -828,17 +802,20 @@ async function main() {
     const xofBefore = Number((before.data ?? []).find((row) => row.currency.code === 'XOF')?.amount);
     const eurBefore = Number((before.data ?? []).find((row) => row.currency.code === 'EUR')?.amount);
 
-    const queue2 = await call('GET', '/transactions/receipts/queue', { token: admin.accessToken });
-    const pending = (queue2.data ?? []).find((row) => row.transaction.id === txId);
-    const approved = await call('POST', `/transactions/receipts/${pending?.id}/approve`, {
+    const approved = await call('POST', `/transactions/${txId}/encaissement`, {
       token: admin.accessToken,
-      body: { declaredAmount: Number(created.data?.sourceAmount) },
+      body: { declaredAmount: Number(created.data?.sourceAmount), declaredRef: 'OM-API-CHECK' },
     });
-    check('la validation du reçu est acceptée (201)', approved.status === 201, `reçu ${approved.status}`);
+    check('l’encaissement au comptoir est accepté (201)', approved.status === 201, `reçu ${approved.status}`);
     check(
-      'valider le reçu exécute le change dans la foulée',
+      'encaisser exécute le change dans la foulée',
       approved.data?.status === 'CHANGE_EXECUTE',
       String(approved.data?.status),
+    );
+    check(
+      'l’attestation conserve la référence du paiement',
+      (approved.data?.proofs ?? [])[0]?.declaredRef === 'OM-API-CHECK',
+      JSON.stringify((approved.data?.proofs ?? [])[0] ?? null),
     );
 
     const after = await call('GET', `/cash/${agencyId}/balances`, { token: admin.accessToken });
@@ -855,11 +832,11 @@ async function main() {
       `${eurBefore} → ${eurAfter}`,
     );
 
-    const twice = await call('POST', `/transactions/receipts/${pending?.id}/approve`, {
+    const twice = await call('POST', `/transactions/${txId}/encaissement`, {
       token: admin.accessToken,
       body: {},
     });
-    check('un reçu déjà traité ne se revalide pas (409)', twice.status === 409, `reçu ${twice.status}`);
+    check('une opération déjà encaissée ne se réencaisse pas (409)', twice.status === 409, `reçu ${twice.status}`);
 
     const ready = await call('POST', `/transactions/${txId}/ready`, { token: admin.accessToken });
     check('les fonds passent à disposition (201)', ready.status === 201 && ready.data?.status === 'PRETE_POUR_RETRAIT', `reçu ${ready.status}`);
@@ -1262,7 +1239,7 @@ async function main() {
     // Quatrième fois que ce script présume de l'état de la base — on filtre
     // donc sur la fenêtre que le rapport déclare lui-même.
     const debutFenetre = new Date(`${data?.period?.from}T00:00:00Z`).getTime();
-    const enAttente = ['CREEE', 'RECU_SOUMIS', 'RECU_VALIDE', 'RECU_REJETE'];
+    const enAttente = ['CREEE', 'PAIEMENT_CONFIRME'];
     const lots = await Promise.all(
       enAttente.map((status) => call('GET', `/transactions?status=${status}`, { token: admin.accessToken })),
     );

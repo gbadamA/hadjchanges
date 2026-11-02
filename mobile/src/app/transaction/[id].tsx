@@ -136,8 +136,7 @@ export default function TransactionDetail(): ReactNode {
 
   const color = STATUS[transaction.status];
   const depositNumber = settings?.depositNumbers[transaction.depositMethod];
-  const lastReceipt = transaction.receipts[0];
-  const awaitingReceipt = transaction.status === 'CREEE' || transaction.status === 'RECU_REJETE';
+  const awaitingReceipt = transaction.status === 'CREEE';
 
   /**
    * Réglable dans l'application de l'opérateur.
@@ -232,9 +231,6 @@ export default function TransactionDetail(): ReactNode {
             <Text style={T.title}>
               {depositNumber ? 'Effectuez votre dépôt' : 'Présentez-vous en agence'}
             </Text>
-            {lastReceipt?.rejectReason ? (
-              <Text style={[T.bodyMute, { color: C.stop }]}>{lastReceipt.rejectReason}</Text>
-            ) : null}
             {depositNumber ? (
               <View style={styles.deposit}>
                 <Text style={T.caption}>{DEPOSIT_LABEL[transaction.depositMethod]}</Text>

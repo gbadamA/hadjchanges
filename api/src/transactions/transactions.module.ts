@@ -7,7 +7,7 @@ import { RatesModule } from '../rates/rates.module';
 import { PasswordModule } from '../auth/password.module';
 import { CounterService } from './counter.service';
 import { ExchangeExecutor } from './exchange-executor';
-import { ReceiptsService } from './receipts.service';
+import { PaymentProofService } from './payment-proof.service';
 import { TransactionStateMachine } from './transaction-state-machine';
 import { TransactionsController } from './transactions.controller';
 import { TransactionsService } from './transactions.service';
@@ -23,7 +23,7 @@ import { TransactionsService } from './transactions.service';
   controllers: [TransactionsController],
   providers: [
     TransactionsService,
-    ReceiptsService,
+    PaymentProofService,
     CounterService,
     ExchangeExecutor,
     TransactionStateMachine,

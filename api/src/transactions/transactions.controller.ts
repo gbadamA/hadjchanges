@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { ReceiptStatus, Role, TransactionStatus } from '@prisma/client';
+import { Role, TransactionStatus } from '@prisma/client';
 import type { Request, Response } from 'express';
 import type { AuthUser } from '../common/auth-user';
 import { CurrentUser, Roles } from '../common/decorators';
@@ -21,7 +21,7 @@ import { ExportService } from '../documents/export.service';
 import type { UploadedDocument } from '../kyc/kyc.service';
 import { counterTransactionSchema, type CounterTransactionInput } from './counter.schemas';
 import { CounterService } from './counter.service';
-import { ReceiptsService, type ReceiptQueueRow } from './receipts.service';
+import { PaymentProofService } from './payment-proof.service';
 import {
   cancelSchema,
   counterCollectionSchema,
@@ -46,7 +46,7 @@ const STAFF = [Role.OPERATEUR, Role.ADMIN, Role.SUPER_ADMIN] as const;
 export class TransactionsController {
   constructor(
     private readonly transactions: TransactionsService,
-    private readonly receipts: ReceiptsService,
+    private readonly paiements: PaymentProofService,
     private readonly exports: ExportService,
     private readonly counter: CounterService,
   ) {}
@@ -122,56 +122,8 @@ export class TransactionsController {
     response.send(buffer);
   }
 
-  @Roles(...STAFF)
-  @Get('receipts/queue')
-  @ApiOperation({ summary: 'File des reçus de paiement à contrôler.' })
-  receiptQueue(
-    @CurrentUser() current: AuthUser,
-    @Query('status') status?: ReceiptStatus,
-  ): Promise<ReceiptQueueRow[]> {
-    return this.receipts.queue(current, status ?? ReceiptStatus.EN_ATTENTE);
-  }
-
-  @Get('receipts/:id/file')
-  @ApiOperation({ summary: 'Lire un justificatif de paiement (propriétaire ou agent).' })
-  async receiptFile(
-    @Param('id') id: string,
-    @CurrentUser() current: AuthUser,
-    @Res() response: Response,
-  ): Promise<void> {
-    const { buffer, mimeType } = await this.receipts.readFile(id, current);
-    response.setHeader('content-type', mimeType);
-    response.setHeader('cache-control', 'no-store, private');
-    response.setHeader('x-robots-tag', 'noindex, nofollow');
-    response.send(buffer);
-  }
-
-  @Roles(...STAFF)
-  @Post('receipts/:id/approve')
-  @ApiOperation({ summary: 'Valider un reçu — exécute le change dans la foulée.' })
-  @ApiZodBody('ReviewReceipt', receiptReviewSchema)
-  approveReceipt(
-    @Param('id') id: string,
-    @Body() body: unknown,
-    @CurrentUser() current: AuthUser,
-    @Req() request: Request,
-  ): Promise<TransactionView> {
-    return this.receipts.approve(id, receiptReviewSchema.parse(body ?? {}), current, request.ip);
-  }
-
-  @Roles(...STAFF)
-  @Post('receipts/:id/reject')
-  @ApiOperation({ summary: 'Rejeter un reçu, avec motif transmis au client.' })
-  @ApiZodBody('RejectReceipt', receiptRejectSchema)
-  rejectReceipt(
-    @Param('id') id: string,
-    @ZBody(receiptRejectSchema) body: ReceiptRejectInput,
-    @CurrentUser() current: AuthUser,
-    @Req() request: Request,
-  ): Promise<TransactionView> {
-    return this.receipts.reject(id, body, current, request.ip);
-  }
-
+  // Pas de @Roles : un client lit SA transaction, le service vérifie
+  // l'appartenance et répond 404 — jamais 403, qui révélerait son existence.
   @Get(':id')
   @ApiOperation({ summary: 'Détail d’une transaction (la sienne, ou toutes pour un agent).' })
   findOne(@Param('id') id: string, @CurrentUser() current: AuthUser): Promise<TransactionView> {
@@ -213,28 +165,7 @@ export class TransactionsController {
     @CurrentUser() agent: AuthUser,
     @Req() request: Request,
   ): Promise<TransactionView> {
-    return this.receipts.attester(id, input, agent, request.ip);
-  }
-
-  /**
-   * ⚠️ Parcours HISTORIQUE, conservé pour les opérations déjà en cours.
-   *
-   * Le client n'importe plus de justificatif : l'application ne propose plus
-   * ce geste. La preuve est désormais l'attestation d'un agent, ou l'événement
-   * signé d'un opérateur de paiement.
-   */
-  @Roles(Role.CLIENT)
-  @Post(':id/receipt')
-  @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('receipt'))
-  @ApiOperation({ summary: 'Déposer la preuve de paiement (parcours historique).' })
-  submitReceipt(
-    @Param('id') id: string,
-    @UploadedFile() file: UploadedDocument | undefined,
-    @CurrentUser() current: AuthUser,
-    @Req() request: Request,
-  ): Promise<TransactionView> {
-    return this.receipts.submit(id, file, current, request.ip);
+    return this.paiements.attester(id, input, agent, request.ip);
   }
 
   @Post(':id/cancel')

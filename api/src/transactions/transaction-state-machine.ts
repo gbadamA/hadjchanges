@@ -13,16 +13,12 @@ import { TransactionChannel, TransactionStatus } from '@prisma/client';
  * ligne à cette table, sans toucher aux services (OCP).
  */
 const TRANSITIONS: Record<TransactionStatus, TransactionStatus[]> = {
-  [TransactionStatus.CREEE]: [TransactionStatus.RECU_SOUMIS, TransactionStatus.ANNULEE],
-  // Le reçu part en contrôle : l'agent valide ou rejette, personne d'autre.
-  [TransactionStatus.RECU_SOUMIS]: [
-    TransactionStatus.RECU_VALIDE,
-    TransactionStatus.RECU_REJETE,
-    TransactionStatus.ANNULEE,
-  ],
-  // Un rejet renvoie le client au dépôt : c'est une boucle, pas une impasse.
-  [TransactionStatus.RECU_REJETE]: [TransactionStatus.RECU_SOUMIS, TransactionStatus.ANNULEE],
-  [TransactionStatus.RECU_VALIDE]: [TransactionStatus.CHANGE_EXECUTE],
+  // ⚠️ Depuis « en attente de paiement », la table COMMUNE ne mène qu'à
+  // l'annulation. Confirmer un paiement passe forcément par
+  // `assertPaiementProuve` — une preuve signée ou l'attestation d'un agent —
+  // jamais par un appel ordinaire.
+  [TransactionStatus.CREEE]: [TransactionStatus.ANNULEE],
+  [TransactionStatus.PAIEMENT_CONFIRME]: [TransactionStatus.CHANGE_EXECUTE],
   [TransactionStatus.CHANGE_EXECUTE]: [TransactionStatus.PRETE_POUR_RETRAIT],
   [TransactionStatus.PRETE_POUR_RETRAIT]: [TransactionStatus.CLOTUREE],
   // États terminaux. Une transaction close ou annulée ne repart jamais : la
@@ -34,8 +30,7 @@ const TRANSITIONS: Record<TransactionStatus, TransactionStatus[]> = {
 /** Ce que le client peut voir comme « étapes franchies » dans son suivi. */
 export const TIMELINE_ORDER: TransactionStatus[] = [
   TransactionStatus.CREEE,
-  TransactionStatus.RECU_SOUMIS,
-  TransactionStatus.RECU_VALIDE,
+  TransactionStatus.PAIEMENT_CONFIRME,
   TransactionStatus.CHANGE_EXECUTE,
   TransactionStatus.PRETE_POUR_RETRAIT,
   TransactionStatus.CLOTUREE,
@@ -44,11 +39,11 @@ export const TIMELINE_ORDER: TransactionStatus[] = [
 /**
  * Transitions **supplémentaires** au guichet.
  *
- * Le client est là, avec ses billets : il n'y a pas de reçu de virement à
- * contrôler, donc l'agent exécute le change directement. Ce raccourci est
- * déclaré ici, séparément, plutôt qu'ajouté à la table commune — l'ouvrir à
- * tout le monde laisserait une opération de l'application sauter le contrôle
- * du paiement, c'est-à-dire exécuter un change sans avoir vu l'argent.
+ * Le client est là, avec ses billets, et l'opération naît sous les mains de
+ * l'agent : il n'y a rien à confirmer séparément, le change s'exécute
+ * directement. Ce raccourci est déclaré ici plutôt qu'ajouté à la table
+ * commune — l'ouvrir à tout le monde laisserait une opération née dans
+ * l'application exécuter un change sans que personne n'ait vu l'argent.
  */
 const COUNTER_TRANSITIONS: Partial<Record<TransactionStatus, TransactionStatus[]>> = {
   [TransactionStatus.CREEE]: [TransactionStatus.CHANGE_EXECUTE],
@@ -67,8 +62,9 @@ const COUNTER_TRANSITIONS: Partial<Record<TransactionStatus, TransactionStatus[]
  *  - **l'attestation d'un agent au comptoir** : il a le client devant lui,
  *    retrouve l'opération par son code et constate le paiement.
  *
- * Dans les deux cas l'étape `RECU_SOUMIS` n'a plus d'objet : on passe
- * directement de « en attente de paiement » à « paiement prouvé ».
+ * Dans les deux cas on passe directement de « en attente de paiement » à
+ * « paiement confirmé » : il n'existe plus d'étape intermédiaire de dépôt ni
+ * de contrôle de justificatif.
  *
  * ⚠️ Déclaré à part, et **atteignable uniquement par `assertPaiementProuve`**,
  * exactement pour la raison qui vaut déjà pour le guichet : ajouter
@@ -77,13 +73,9 @@ const COUNTER_TRANSITIONS: Partial<Record<TransactionStatus, TransactionStatus[]
  * méthode au nom distinct ne peut pas être atteinte par erreur, contrairement
  * à un drapeau booléen qu'on oublie de passer.
  *
- * Un justificatif rejeté n'est pas une impasse : le client peut payer par le
- * fournisseur, ou se présenter au comptoir.
  */
 const PREUVE_TRANSITIONS: Partial<Record<TransactionStatus, TransactionStatus[]>> = {
-  [TransactionStatus.CREEE]: [TransactionStatus.RECU_VALIDE],
-  [TransactionStatus.RECU_SOUMIS]: [TransactionStatus.RECU_VALIDE],
-  [TransactionStatus.RECU_REJETE]: [TransactionStatus.RECU_VALIDE],
+  [TransactionStatus.CREEE]: [TransactionStatus.PAIEMENT_CONFIRME],
 };
 
 @Injectable()
@@ -142,9 +134,7 @@ export class TransactionStateMachine {
 /** Libellés français — repris tels quels par le mobile et le dashboard. */
 export const LABELS: Record<TransactionStatus, string> = {
   [TransactionStatus.CREEE]: 'en attente de paiement',
-  [TransactionStatus.RECU_SOUMIS]: 'reçu en cours de contrôle',
-  [TransactionStatus.RECU_VALIDE]: 'reçu validé',
-  [TransactionStatus.RECU_REJETE]: 'reçu rejeté',
+  [TransactionStatus.PAIEMENT_CONFIRME]: 'paiement confirmé',
   [TransactionStatus.CHANGE_EXECUTE]: 'change exécuté',
   [TransactionStatus.PRETE_POUR_RETRAIT]: 'prête pour retrait',
   [TransactionStatus.CLOTUREE]: 'clôturée',

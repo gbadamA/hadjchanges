@@ -68,9 +68,10 @@ enum TransactionDirection {
 /// sont tenues par la state machine côté service — jamais en base.
 enum TransactionStatus {
   CREEE
-  RECU_SOUMIS
-  RECU_VALIDE
-  RECU_REJETE
+  /// Paiement prouvé : attestation d'un agent au comptoir, ou événement signé
+  /// d'un opérateur de paiement. Il n'y a plus d'étape de dépôt ni de contrôle
+  /// de justificatif — d'où le nom, qui dit ce qui est acquis et non comment.
+  PAIEMENT_CONFIRME
   CHANGE_EXECUTE
   PRETE_POUR_RETRAIT
   CLOTUREE
@@ -100,12 +101,6 @@ enum PayoutMethod {
   ESPECES_AGENCE
   MOBILE_MONEY
   VIREMENT_BANCAIRE
-}
-
-enum ReceiptStatus {
-  EN_ATTENTE
-  VALIDE
-  REJETE
 }
 
 enum CashMovementType {
@@ -172,7 +167,7 @@ model User {
   transactions      Transaction[]     @relation("ClientTransactions")
   handledTxns       Transaction[]     @relation("OperatorTransactions")
   reviewedKyc       KycDocument[]     @relation("KycReviewer")
-  validatedReceipts PaymentReceipt[]  @relation("ReceiptValidator")
+  attestedPayments  PaymentReceipt[]  @relation("PaymentAttestation")
   initiatedPayouts  PaymentPayout[]   @relation("PayoutInitiator")
   publishedRates    ExchangeRate[]
   cashMovements     CashMovement[]
@@ -512,8 +507,9 @@ model Transaction {
 
   // Horodatage de chaque étape — la timeline du client sort de ces colonnes.
   createdAt          DateTime  @default(now())
-  receiptSubmittedAt DateTime?
-  receiptReviewedAt  DateTime?
+  /// Moment où le paiement a été prouvé — par un agent ou par un événement
+  /// signé. Un seul horodatage : il n'y a plus de dépôt PUIS de contrôle.
+  paidAt             DateTime?
   executedAt         DateTime?
   readyAt            DateTime?
   closedAt           DateTime?
@@ -676,41 +672,37 @@ model PaymentEvent {
   @@index([receivedAt])
 }
 
-/// Preuve qu'un paiement a bien été reçu.
+/// Attestation qu'un paiement a bien été reçu.
 ///
-/// Elle prend deux formes, et c'est voulu :
-///  - **une attestation d'agent** : au comptoir, l'agent retrouve l'opération
-///    (QR scanné ou numéro dicté), constate le paiement ou les espèces, et
-///    l'atteste. `fileUrl` est alors nul, et `declaredRef` porte la référence
-///    du paiement relevée sur le téléphone du client.
-///  - **un document** importé par le client — parcours historique, conservé
-///    pour les lignes déjà en base.
+/// Au comptoir, l'agent retrouve l'opération (QR scanné ou numéro dicté),
+/// constate le paiement ou les espèces, et l'atteste. Ce qui fait foi : son
+/// identité, l'horodatage, et `declaredRef` — la référence du paiement relevée
+/// sur le téléphone du client.
 ///
-/// Plusieurs lignes possibles par opération : une preuve rejetée n'est pas
-/// supprimée, elle est remplacée.
+/// ⚠️ Il n'y a **plus aucun document conservé**. Le client n'importe plus de
+/// justificatif, et il n'existe plus de file de contrôle : l'agent constate et
+/// atteste en un seul geste. Arbitrage assumé par l'exploitant — moins solide
+/// qu'une pièce gardée en cas de litige ou de contrôle LCB-FT, d'où
+/// l'importance de saisir `declaredRef` dès qu'elle existe.
 model PaymentReceipt {
   id            String      @id @default(cuid())
   transactionId String
   transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
 
-  /// ⚠️ Nuls pour une attestation d'agent : il n'y a pas de fichier. Ne jamais
-  /// les rendre obligatoires à nouveau sans traiter ce cas.
-  fileUrl  String?
-  mimeType String?
-  /// Montant et référence lus sur le reçu, saisis par l'opérateur au contrôle.
+  /// Montant constaté, et référence du paiement relevée par l'agent.
   declaredAmount Decimal? @db.Decimal(18, 2)
   declaredRef    String?
 
-  status        ReceiptStatus @default(EN_ATTENTE)
-  rejectReason  String?
-  validatedById String?
-  validatedBy   User?         @relation("ReceiptValidator", fields: [validatedById], references: [id])
-  validatedAt   DateTime?
+  /// Agent qui a constaté le paiement, et quand. Obligatoires : une
+  /// attestation sans auteur ne vaut rien.
+  attestedById String
+  attestedBy   User   @relation("PaymentAttestation", fields: [attestedById], references: [id])
+  attestedAt   DateTime @default(now())
 
   createdAt DateTime @default(now())
 
-  @@index([status, createdAt])
   @@index([transactionId])
+  @@index([attestedAt])
 }
 
 // ---------------------------------------------------------------------------

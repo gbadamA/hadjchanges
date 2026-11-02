@@ -53,9 +53,7 @@ export interface Quote {
 
 export type TransactionStatus =
   | 'CREEE'
-  | 'RECU_SOUMIS'
-  | 'RECU_VALIDE'
-  | 'RECU_REJETE'
+  | 'PAIEMENT_CONFIRME'
   | 'CHANGE_EXECUTE'
   | 'PRETE_POUR_RETRAIT'
   | 'CLOTUREE'
@@ -110,12 +108,12 @@ export interface Transaction {
   cancelReason: string | null;
   createdAt: string;
   agency: { id: string; name: string; city: string } | null;
-  receipts: Array<{
+  /** Attestations de paiement : qui a constaté, quand, sous quelle référence. */
+  proofs: Array<{
     id: string;
-    status: string;
-    rejectReason: string | null;
-    createdAt: string;
-    validatedAt: string | null;
+    declaredAmount: string | null;
+    declaredRef: string | null;
+    attestedAt: string;
   }>;
   timeline: TimelineStep[];
 }

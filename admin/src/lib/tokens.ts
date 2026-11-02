@@ -75,9 +75,7 @@ export const trend = {
  */
 export const statusColors = {
   CREEE: "#5A6B7D", // gris — en attente d'action du client
-  RECU_SOUMIS: "#F59E0B", // ambre — à traiter par l'opérateur
-  RECU_VALIDE: "#4757C9", // bleu-indigo — contrôlé, change à exécuter
-  RECU_REJETE: "#B3261E", // rouge — à redéposer
+  PAIEMENT_CONFIRME: "#4757C9", // bleu-indigo — payé, change à exécuter
   CHANGE_EXECUTE: "#1B2A8F", // bleu — opération faite
   PRETE_POUR_RETRAIT: "#D81E27", // rouge du logo — la valeur est disponible
   CLOTUREE: "#12B76A", // vert — terminé

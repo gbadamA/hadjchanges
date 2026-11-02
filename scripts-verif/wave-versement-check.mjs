@@ -79,30 +79,17 @@ async function operationPrete({ client, admin, direction, currencyCode, amount, 
   }
   const operation = creation.data;
 
-  // Dépôt d'un reçu, puis validation par l'agent : c'est la voie manuelle, qui
-  // reste la seule pour un ACHAT_DEVISE (le client apporte des billets).
-  const form = new FormData();
-  form.append('receipt', new Blob([Buffer.from('recu de controle')], { type: 'image/png' }), 'recu.png');
-  const depot = await appel('POST', `/transactions/${operation.id}/receipt`, {
-    token: client.accessToken,
-    form,
-  });
-  if (depot.status !== 200 && depot.status !== 201) {
-    throw new Error(`dépôt du reçu refusé (${depot.status}) : ${JSON.stringify(depot.data)}`);
-  }
-
-  const file = await appel('GET', '/transactions/receipts/queue?status=EN_ATTENTE', {
+  // Encaissement au comptoir : l'agent constate le paiement et atteste. C'est
+  // la seule voie pour un ACHAT_DEVISE — le client apporte des billets, il n'y
+  // a rien qu'un opérateur de paiement puisse confirmer à distance.
+  const encaissement = await appel('POST', `/transactions/${operation.id}/encaissement`, {
     token: admin.accessToken,
+    body: { declaredRef: 'ESPECES-COMPTOIR' },
   });
-  const recu = (file.data ?? []).find((row) => row.transaction?.id === operation.id);
-  if (!recu) throw new Error("reçu absent de la file de contrôle");
-
-  const validation = await appel('POST', `/transactions/receipts/${recu.id}/approve`, {
-    token: admin.accessToken,
-    body: {},
-  });
-  if (validation.status !== 200 && validation.status !== 201) {
-    throw new Error(`validation refusée (${validation.status}) : ${JSON.stringify(validation.data)}`);
+  if (encaissement.status !== 200 && encaissement.status !== 201) {
+    throw new Error(
+      `encaissement refusé (${encaissement.status}) : ${JSON.stringify(encaissement.data)}`,
+    );
   }
 
   const prete = await appel('POST', `/transactions/${operation.id}/ready`, {

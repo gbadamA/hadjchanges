@@ -108,7 +108,7 @@ agence de voyage). Vide = le client lui-même.
 
 ```
          ┌─ agent : code scanné ou numéro dicté, paiement constaté ─┐
-CREEE ───┤                                                          ├─► RECU_VALIDE
+CREEE ───┤                                                          ├─► PAIEMENT_CONFIRME
   │      └─ ou événement SIGNÉ de l'opérateur de paiement (Wave) ───┘        │
   │                                                                     exécution
   └─► ANNULEE                                                               ▼
@@ -134,9 +134,10 @@ CREEE ───┤                                                          ├�
 5. Le change s'exécute au taux **verrouillé lors de la simulation**, mouvements de caisse générés.
 6. Retrait/versement (espèces en agence, mobile money, virement) → `CLOTUREE` + justificatif PDF.
 
-> **Parcours historique.** `RECU_SOUMIS` / `RECU_REJETE` et l'import de justificatif existent
-> encore côté API, pour les opérations déjà engagées. L'application mobile ne propose plus ce
-> geste, et aucun nouveau justificatif n'est créé.
+> **Le parcours « reçu photo » est SUPPRIMÉ**, pas désactivé : les états `RECU_SOUMIS` /
+> `RECU_REJETE`, l'import de justificatif, la file de contrôle et son stockage de fichiers
+> n'existent plus nulle part. `PaymentReceipt` ne porte plus qu'une attestation — montant constaté,
+> référence du paiement, agent, horodatage.
 
 Les transitions invalides sont refusées **côté service** par une state machine, jamais par la base.
 

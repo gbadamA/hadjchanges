@@ -36,7 +36,7 @@ const currencyOf = (row: Transaction): string =>
 const FILTERS: Array<{ value: TransactionStatus | 'TOUTES'; label: string }> = [
   { value: 'TOUTES', label: 'Toutes' },
   { value: 'CREEE', label: 'À payer' },
-  { value: 'RECU_SOUMIS', label: 'En contrôle' },
+  { value: 'PAIEMENT_CONFIRME', label: 'Payée' },
   { value: 'PRETE_POUR_RETRAIT', label: 'À retirer' },
   { value: 'CLOTUREE', label: 'Terminées' },
 ];

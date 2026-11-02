@@ -34,9 +34,7 @@ const config: Config = {
         // Statuts de transaction
         status: {
           creee: "#5A6B7D",
-          "recu-soumis": "#F59E0B",
-          "recu-valide": "#4757C9",
-          "recu-rejete": "#B3261E",
+          "paiement-confirme": "#4757C9",
           execute: "#1B2A8F",
           prete: "#D81E27",
           cloturee: "#12B76A",

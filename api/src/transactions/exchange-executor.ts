@@ -84,7 +84,7 @@ export class ExchangeExecutor {
       action: 'transaction.execute',
       entity: 'Transaction',
       entityId: transactionId,
-      before: { status: TransactionStatus.RECU_VALIDE },
+      before: { status: TransactionStatus.PAIEMENT_CONFIRME },
       after: {
         status: TransactionStatus.CHANGE_EXECUTE,
         sens: isSale ? 'vente de devise' : 'achat de devise',

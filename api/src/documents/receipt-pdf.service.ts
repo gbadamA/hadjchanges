@@ -220,8 +220,8 @@ export class ReceiptPdfService {
   private timeline(doc: PDFKit.PDFDocument, transaction: TransactionWithRelations): void {
     const steps: Array<[string, Date | null]> = [
       ['Opération créée', transaction.createdAt],
-      ['Reçu de paiement déposé', transaction.receiptSubmittedAt],
-      ['Reçu contrôlé', transaction.receiptReviewedAt],
+      ['Reçu de paiement déposé', transaction.paidAt],
+      ['Reçu contrôlé', transaction.paidAt],
       ['Change exécuté', transaction.executedAt],
       ['Fonds mis à disposition', transaction.readyAt],
       ['Opération clôturée', transaction.closedAt],

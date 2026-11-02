@@ -270,16 +270,14 @@ export class CheckoutService {
     }
 
     // Déjà payée : un rejeu tardif ne doit pas rejouer la transition.
-    if (transaction.status !== TransactionStatus.CREEE &&
-        transaction.status !== TransactionStatus.RECU_SOUMIS &&
-        transaction.status !== TransactionStatus.RECU_REJETE) {
+    if (transaction.status !== TransactionStatus.CREEE) {
       this.logger.log(
         `Opération ${transaction.reference} déjà au statut ${transaction.status} : confirmation sans effet.`,
       );
       return { issue: 'DEJA_PAYEE', reference: transaction.reference };
     }
 
-    this.machine.assertPaiementProuve(transaction.status, TransactionStatus.RECU_VALIDE);
+    this.machine.assertPaiementProuve(transaction.status, TransactionStatus.PAIEMENT_CONFIRME);
 
     const [, mise] = await this.prisma.$transaction([
       this.prisma.paymentCheckout.updateMany({
@@ -292,11 +290,7 @@ export class CheckoutService {
       }),
       this.prisma.transaction.update({
         where: { id: transaction.id },
-        data: {
-          status: TransactionStatus.RECU_VALIDE,
-          receiptSubmittedAt: new Date(),
-          receiptReviewedAt: new Date(),
-        },
+        data: { status: TransactionStatus.PAIEMENT_CONFIRME, paidAt: new Date() },
         include: transactionInclude,
       }),
     ]);
@@ -326,7 +320,7 @@ export class CheckoutService {
       entityId: transaction.id,
       before: { status: transaction.status },
       after: {
-        status: TransactionStatus.RECU_VALIDE,
+        status: TransactionStatus.PAIEMENT_CONFIRME,
         fournisseur: this.paiements.nom,
         idSession: encaissement.idSession,
         idTransactionFournisseur: encaissement.idTransaction,

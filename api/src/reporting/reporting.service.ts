@@ -14,11 +14,10 @@ const REALISED: TransactionStatus[] = [
   TransactionStatus.CLOTUREE,
 ];
 
+/** Opérations engagées mais pas encore exécutées : comptées à part. */
 const PENDING: TransactionStatus[] = [
   TransactionStatus.CREEE,
-  TransactionStatus.RECU_SOUMIS,
-  TransactionStatus.RECU_VALIDE,
-  TransactionStatus.RECU_REJETE,
+  TransactionStatus.PAIEMENT_CONFIRME,
 ];
 
 export interface ReportingQuery {

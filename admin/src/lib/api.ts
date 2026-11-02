@@ -128,9 +128,7 @@ export const auth = {
 
 export type TransactionStatus =
   | 'CREEE'
-  | 'RECU_SOUMIS'
-  | 'RECU_VALIDE'
-  | 'RECU_REJETE'
+  | 'PAIEMENT_CONFIRME'
   | 'CHANGE_EXECUTE'
   | 'PRETE_POUR_RETRAIT'
   | 'CLOTUREE'
@@ -201,15 +199,6 @@ export interface QuotePreview {
   amountXof: string;
 }
 
-export interface ReceiptRow {
-  id: string;
-  status: string;
-  createdAt: string;
-  declaredAmount: string | null;
-  declaredRef: string | null;
-  transaction: TransactionRow;
-}
-
 export const transactions = {
   list: (token: string, params: Record<string, string> = {}) =>
     apiFetch<TransactionRow[]>(`/transactions?${new URLSearchParams(params).toString()}`, { token }),
@@ -230,20 +219,6 @@ export const transactions = {
     apiFetch<TransactionRow>(`/transactions/${id}/encaissement`, {
       method: 'POST',
       body: input,
-      token,
-    }),
-  receiptQueue: (token: string, status = 'EN_ATTENTE') =>
-    apiFetch<ReceiptRow[]>(`/transactions/receipts/queue?status=${status}`, { token }),
-  approveReceipt: (id: string, declaredAmount: number | undefined, token: string) =>
-    apiFetch<TransactionRow>(`/transactions/receipts/${id}/approve`, {
-      method: 'POST',
-      body: declaredAmount === undefined ? {} : { declaredAmount },
-      token,
-    }),
-  rejectReceipt: (id: string, reason: string, token: string) =>
-    apiFetch<TransactionRow>(`/transactions/receipts/${id}/reject`, {
-      method: 'POST',
-      body: { reason },
       token,
     }),
   /** Simulation publique — sert d'aperçu au guichet pendant la saisie. */
@@ -302,9 +277,7 @@ export async function downloadProtected(
 /** Couleur de statut — miroir de `statusColors` dans `tokens.ts`. */
 export const STATUS_CLASS: Record<TransactionStatus, string> = {
   CREEE: 'bg-status-creee/15 text-status-creee',
-  RECU_SOUMIS: 'bg-status-recu-soumis/15 text-status-recu-soumis',
-  RECU_VALIDE: 'bg-status-recu-valide/15 text-status-recu-valide',
-  RECU_REJETE: 'bg-status-recu-rejete/15 text-status-recu-rejete',
+  PAIEMENT_CONFIRME: 'bg-status-paiement-confirme/15 text-status-paiement-confirme',
   CHANGE_EXECUTE: 'bg-status-execute/15 text-status-execute',
   PRETE_POUR_RETRAIT: 'bg-status-prete/20 text-secondary-hover',
   CLOTUREE: 'bg-status-cloturee/15 text-status-cloturee',
@@ -712,10 +685,6 @@ export async function fetchProtectedImage(
 }
 
 /** Justificatif de paiement — même règle : l'URL exige un jeton. */
-export async function fetchReceiptImage(receiptId: string, token: string): Promise<string> {
-  return protectedBlob(`/api/transactions/receipts/${receiptId}/file`, token);
-}
-
 async function protectedBlob(path: string, token: string): Promise<string> {
   const response = await fetch(`${API_URL}${path}`, {
     headers: { authorization: `Bearer ${token}` },

@@ -146,7 +146,7 @@ async function main() {
   console.log('\n=== Ce qui remplace le document ===');
   {
     const relue = await appel('GET', `/transactions/${operation.id}`, { token: admin.accessToken });
-    const preuves = relue.data?.receipts ?? [];
+    const preuves = relue.data?.proofs ?? [];
     verifier(
       'une preuve de paiement est enregistrée',
       preuves.length === 1,
@@ -154,35 +154,25 @@ async function main() {
       `${preuves.length}`,
     );
     verifier(
-      'elle est déjà validée : personne d’autre n’a à trancher',
-      preuves[0]?.status === 'VALIDE',
-      'VALIDE',
-      preuves[0]?.status,
-    );
-    verifier(
-      'elle porte un horodatage de validation',
-      typeof preuves[0]?.validatedAt === 'string',
+      'elle porte un horodatage d’attestation',
+      typeof preuves[0]?.attestedAt === 'string',
       'une date',
-      preuves[0]?.validatedAt ?? 'aucune',
+      preuves[0]?.attestedAt ?? 'aucune',
     );
 
     // La référence saisie est la SEULE trace vérifiable : si elle ne ressort
     // pas, l'attestation ne vaut plus rien en cas de litige.
-    const file = await appel('GET', '/transactions/receipts/queue?status=VALIDE', {
-      token: admin.accessToken,
-    });
-    const ligne = (file.data ?? []).find((r) => r.transaction?.id === operation.id);
     verifier(
       'la référence du paiement est conservée et relisible',
-      ligne?.declaredRef === 'OM-TEST-998877',
+      preuves[0]?.declaredRef === 'OM-TEST-998877',
       'OM-TEST-998877',
-      ligne?.declaredRef ?? 'absente',
+      preuves[0]?.declaredRef ?? 'absente',
     );
     verifier(
       'le montant constaté est conservé',
-      ligne?.declaredAmount !== null && ligne?.declaredAmount !== undefined,
+      preuves[0]?.declaredAmount !== null && preuves[0]?.declaredAmount !== undefined,
       'un montant',
-      ligne?.declaredAmount ?? 'absent',
+      preuves[0]?.declaredAmount ?? 'absent',
     );
   }
 
