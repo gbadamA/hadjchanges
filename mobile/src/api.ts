@@ -1,4 +1,3 @@
-import * as FileSystem from 'expo-file-system/legacy';
 import { API_BASE_URL } from './api-url';
 import type {
   Agency,
@@ -9,6 +8,7 @@ import type {
   RateRow,
   Transaction,
   TransactionDirection,
+  TransactionStatus,
 } from './models';
 
 export interface AppNotification {
@@ -36,7 +36,36 @@ export interface LimitsView {
 
 export interface PublicSettings {
   depositNumbers: Partial<Record<DepositMethod, string>>;
+  /** Contenu du QR marchand du bureau, par réseau — absent s'il n'est pas enregistré. */
+  merchantQr: Partial<Record<DepositMethod, string>>;
   rateLockMinutes: number;
+}
+
+/** Tableau du jour de l'agent, compté par l'API dans le périmètre de son agence. */
+export interface StaffBoard {
+  aEncaisser: number;
+  aRemettre: number;
+  clotureesAujourdhui: number;
+  volumeXofAujourdhui: string;
+}
+
+/** Opération au guichet : le client est là, avec sa pièce et son argent. */
+export interface CounterInput {
+  customer: {
+    firstName: string;
+    lastName: string;
+    phone: string;
+    idType: 'CNI' | 'PASSEPORT' | 'PERMIS' | 'CARTE_CONSULAIRE';
+    idNumber: string;
+  };
+  direction: TransactionDirection;
+  currencyCode: string;
+  amount: number;
+  side: 'SOURCE' | 'TARGET';
+  depositMethod: DepositMethod;
+  paymentRef?: string;
+  /** Exigée pour l'encadrement, qui n'a pas d'agence ; déduite pour un opérateur. */
+  agencyId?: string;
 }
 
 export interface CreateTransactionInput {
@@ -205,114 +234,17 @@ export interface QuoteRequest {
   agencyId?: string | null;
 }
 
-/** Fichier choisi dans la galerie ou pris à l'appareil photo. */
-export interface PickedFile {
-  uri: string;
-  name: string;
-  type: string;
-}
-
 export interface KycState {
   status: 'NON_SOUMIS' | 'EN_ATTENTE' | 'VALIDE' | 'REJETE';
   document: {
     id: string;
     type: string;
     status: string;
-    hasSelfie: boolean;
+    documentNumber: string | null;
+    expiresAt: string | null;
     rejectReason: string | null;
     createdAt: string;
   } | null;
-}
-
-/**
- * Dépôt de fichiers, via `uploadAsync` d'expo-file-system.
- *
- * ⚠️ PAS `fetch` + `FormData`. C'est ce qu'on faisait, et ça échouait sur tout
- * appareil en Android 13 ou plus : le moteur réseau de React Native doit ouvrir
- * lui-même le fichier rendu par le sélecteur, or l'application n'a aucune
- * permission de lecture dessus — `READ_EXTERNAL_STORAGE` est plafonnée à
- * Android 12 (`maxSdkVersion=32`) et `READ_MEDIA_IMAGES` n'est pas déclarée.
- * L'ouverture échouait, `fetch` levait une exception, et l'utilisateur lisait
- * « Envoi impossible. Vérifiez votre réseau. » — un message qui accusait le
- * réseau alors que le réseau n'y était pour rien.
- *
- * `uploadAsync` lit le fichier CÔTÉ NATIF, avec les droits accordés au
- * sélecteur, puis compose le multipart lui-même (et y place sa propre frontière
- * `boundary` : ne jamais poser `content-type` à la main ici).
- *
- * Un fichier par appel — contrainte de l'API, sans conséquence : la pièce
- * d'identité et le selfie partent déjà en deux envois distincts.
- */
-async function upload<T>(
-  path: string,
-  { token, fields, files }: { token: string; fields: Record<string, string>; files: Record<string, PickedFile> },
-): Promise<T> {
-  const entrees = Object.entries(files);
-  if (entrees.length === 0) throw new ApiError('Aucun fichier à envoyer.', 0);
-
-  let dernier: FileSystem.FileSystemUploadResult | null = null;
-  let jeton = token;
-
-  for (const [champ, fichier] of entrees) {
-    const envoyer = (avec: string): Promise<FileSystem.FileSystemUploadResult> =>
-      FileSystem.uploadAsync(`${BASE_URL}/api${path}`, fichier.uri, {
-        httpMethod: 'POST',
-        uploadType: FileSystem.FileSystemUploadType.MULTIPART,
-        fieldName: champ,
-        mimeType: fichier.type,
-        headers: { authorization: `Bearer ${avec}` },
-        parameters: fields,
-      });
-
-    let resultat: FileSystem.FileSystemUploadResult;
-    try {
-      resultat = await envoyer(jeton);
-      // Même renouvellement que pour les appels JSON : déposer une pièce
-      // d'identité prend du temps, le jeton peut expirer entre-temps.
-      if (resultat.status === 401) {
-        const frais = await jetonRenouvele();
-        if (frais) {
-          jeton = frais;
-          resultat = await envoyer(frais);
-        }
-      }
-    } catch (cause) {
-      // Distinguer « fichier illisible » de « réseau coupé » : un message qui
-      // accuse le réseau à tort envoie chercher au mauvais endroit, ce qui est
-      // précisément le défaut que ce changement corrige.
-      const detail = cause instanceof Error ? cause.message : '';
-      throw new ApiError(
-        /file|uri|read|permission|access/i.test(detail)
-          ? 'Impossible de lire ce fichier. Choisissez-le à nouveau.'
-          : 'Envoi impossible. Vérifiez votre réseau.',
-        0,
-      );
-    }
-
-    if (resultat.status < 200 || resultat.status >= 300) {
-      let message = 'Envoi refusé.';
-      try {
-        const corps = JSON.parse(resultat.body) as {
-          message?: string;
-          errors?: Array<{ message: string }>;
-        };
-        message = corps.errors?.map((issue) => issue.message).join('\n') ?? corps.message ?? message;
-      } catch {
-        // Corps illisible (page d'erreur d'un proxy) : on garde le générique.
-      }
-      throw new ApiError(message, resultat.status);
-    }
-
-    dernier = resultat;
-  }
-
-  // Même précaution que pour les appels JSON : un 2xx peut porter du HTML si
-  // l'application ne parle pas au bon serveur.
-  try {
-    return JSON.parse(dernier!.body) as T;
-  } catch {
-    throw new ApiError(messageReponseIllisible(dernier!.status), dernier!.status);
-  }
 }
 
 export const api = {
@@ -351,19 +283,12 @@ export const api = {
   cancelTransaction: (id: string, token: string): Promise<Transaction> =>
     request<Transaction>(`/transactions/${id}/cancel`, { method: 'POST', body: {}, token }),
 
-  /** Dépôt de la pièce d'identité — le selfie est facultatif mais recommandé. */
+  /** Déclaration de la pièce d'identité — sans photo, l'agent vérifie l'original. */
   submitKyc: (
-    input: { type: string; documentNumber?: string; document: PickedFile; selfie?: PickedFile },
+    input: { type: string; documentNumber: string; expiresAt: string },
     token: string,
   ): Promise<KycState['document']> =>
-    upload<KycState['document']>('/kyc/documents', {
-      token,
-      fields: {
-        type: input.type,
-        ...(input.documentNumber ? { documentNumber: input.documentNumber } : {}),
-      },
-      files: { document: input.document, ...(input.selfie ? { selfie: input.selfie } : {}) },
-    }),
+    request<KycState['document']>('/kyc/documents', { method: 'POST', body: input, token }),
 
   register: (input: {
     firstName: string;
@@ -461,7 +386,7 @@ export const api = {
    */
   collect: (
     transactionId: string,
-    input: { declaredAmount?: number; declaredRef?: string },
+    input: { declaredAmount?: number; declaredRef?: string; depositMethod?: DepositMethod },
     token: string,
   ): Promise<Transaction> =>
     request<Transaction>(`/transactions/${transactionId}/encaissement`, {
@@ -480,6 +405,35 @@ export const api = {
    */
   findTransaction: (reference: string, token: string): Promise<Transaction[]> =>
     request<Transaction[]>(`/transactions?reference=${encodeURIComponent(reference)}`, { token }),
+
+  /** Tableau du jour : à encaisser, à remettre, fait aujourd'hui. */
+  staffBoard: (token: string): Promise<StaffBoard> =>
+    request<StaffBoard>('/transactions/board', { token }),
+
+  /**
+   * Toutes les opérations visibles par l'agent — l'API restreint un opérateur
+   * à son agence, l'écran n'a rien à filtrer de plus.
+   */
+  staffTransactions: (
+    filters: { statuses?: TransactionStatus[]; from?: string; take?: number },
+    token: string,
+  ): Promise<Transaction[]> => {
+    const query = new URLSearchParams({ take: String(filters.take ?? 100) });
+    if (filters.statuses?.length) query.set('statuses', filters.statuses.join(','));
+    if (filters.from) query.set('from', filters.from);
+    return request<Transaction[]>(`/transactions?${query.toString()}`, { token });
+  },
+
+  /**
+   * ⚠️ Exécute le change, mouvemente la caisse et clôture en un seul appel :
+   * toujours faire confirmer le montant avant.
+   */
+  counter: (input: CounterInput, token: string): Promise<Transaction> =>
+    request<Transaction>('/transactions/counter', { method: 'POST', body: input, token }),
+
+  /** Réservé au super-administrateur (QR marchands, numéros de dépôt). */
+  updateSetting: (key: string, value: string, token: string): Promise<{ key: string; value: string }> =>
+    request(`/settings/${key}`, { method: 'PATCH', body: { value }, token }),
 
   /** Les fonds sont disponibles : le client peut venir les chercher. */
   markReady: (transactionId: string, token: string): Promise<Transaction> =>

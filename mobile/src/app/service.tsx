@@ -1,33 +1,39 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { api, ApiError, type PaymentsBoard, type PayoutPending } from '../api';
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState, type ReactNode } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { api, ApiError, type PaymentsBoard, type PayoutPending, type StaffBoard } from '../api';
 import { useAuth } from '../auth';
-import { money, type Transaction } from '../models';
+import { money } from '../models';
 import { ScanOverlay } from '../scan';
-import { C, R, S, T } from '../theme';
+import { C, R, S, T, shadow } from '../theme';
 import { Button, Card, EmptyState, ErrorBanner, Field, Loader, Screen } from '../ui';
+import { useTransactionUpdates } from '../useTransactionUpdates';
 
 /**
  * Espace de service — ce qu'un agent a à faire, sur son téléphone.
  *
- * Le geste central est en haut : **retrouver l'opération du client** en
- * scannant son code ou en saisissant son numéro, puis encaisser. Il n'y a plus
- * de file de reçus à contrôler — le client n'importe plus de photo, c'est
- * l'agent qui constate le paiement, client devant lui.
+ * De haut en bas, dans l'ordre de la journée :
+ *  1. **le tableau du jour** — ce qui attend, ce qui est fait, d'un coup d'œil ;
+ *     chaque case ouvre la liste correspondante ;
+ *  2. **les trois gestes** — scanner le code d'un client, ouvrir une opération
+ *     au guichet, suivre toutes les opérations ;
+ *  3. les versements mobile money à envoyer.
  *
- * ⚠️ Les deux gestes de cet écran engagent de l'argent — encaisser exécute le
- * change et mouvemente la caisse, envoyer des fonds les fait sortir sans retour
- * possible passé trois jours. Chacun demande donc une confirmation qui redit le
- * montant, et le second nomme aussi le bénéficiaire. Il n'existe pas encore de
- * double validation à deux personnes : sur un téléphone perdu ou prêté, un
+ * Toute action sur une opération se fait sur SA fiche (`/agent/[id]`) : un
+ * seul endroit où l'on encaisse, prépare et remet, quel que soit le chemin
+ * par lequel on l'a retrouvée (scan, numéro, liste).
+ *
+ * ⚠️ Envoyer des fonds les fait sortir sans retour possible passé trois jours :
+ * la confirmation redit le montant et nomme le bénéficiaire. Il n'existe pas
+ * de double validation à deux personnes : sur un téléphone perdu ou prêté, un
  * compte ouvert suffit. C'est un choix assumé, pas un oubli.
  */
-/** États depuis lesquels un agent peut encaisser — les mêmes que l'API. */
-const EN_ATTENTE_DE_PAIEMENT: ReadonlyArray<Transaction['status']> = ['CREEE'];
-
 export default function Service(): ReactNode {
   const { profile, accessToken } = useAuth();
+  const router = useRouter();
 
+  const [jour, setJour] = useState<StaffBoard | null>(null);
   const [board, setBoard] = useState<PaymentsBoard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,12 +41,8 @@ export default function Service(): ReactNode {
   const [busy, setBusy] = useState(false);
 
   const [aVerserConfirme, setAVerserConfirme] = useState<string | null>(null);
-  const [aEncaisser, setAEncaisser] = useState(false);
-  const [referencePaiement, setReferencePaiement] = useState('');
-
   const [numero, setNumero] = useState('');
   const [scanOuvert, setScanOuvert] = useState(false);
-  const [trouvee, setTrouvee] = useState<Transaction | null>(null);
   const [introuvable, setIntrouvable] = useState(false);
 
   const staff = profile !== null && profile.role !== 'CLIENT';
@@ -52,7 +54,10 @@ export default function Service(): ReactNode {
     }
     setError(null);
     try {
-      setBoard(await api.paymentsBoard(accessToken));
+      // Le tableau du jour d'abord : c'est lui que l'agent regarde. Le
+      // fournisseur de paiement peut être lent ou injoignable sans bloquer.
+      setJour(await api.staffBoard(accessToken));
+      setBoard(await api.paymentsBoard(accessToken).catch(() => null));
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'Données de service illisibles.');
     } finally {
@@ -60,12 +65,23 @@ export default function Service(): ReactNode {
     }
   }, [accessToken, staff]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  // Relu à chaque retour sur l'écran : une opération encaissée sur sa fiche
+  // doit déjà être décomptée quand l'agent revient ici.
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
+
+  // Et en direct : un paiement confirmé par l'opérateur, un geste d'un
+  // collègue, et les compteurs bougent sans rien toucher.
+  useTransactionUpdates(
+    () => void load(),
+    () => void load(),
+  );
 
   /**
-   * Retrouve une opération par son numéro, scanné ou saisi.
+   * Retrouve une opération par son numéro, scanné ou saisi, et ouvre sa fiche.
    *
    * ⚠️ L'API cherche en correspondance EXACTE : au comptoir on agit sur une
    * opération précise. Une recherche approchante remonterait les voisines d'un
@@ -78,79 +94,23 @@ export default function Service(): ReactNode {
       setBusy(true);
       setError(null);
       setNotice(null);
-      setTrouvee(null);
       setIntrouvable(false);
       try {
         const resultats = await api.findTransaction(propre, accessToken);
-        if (resultats.length === 0) setIntrouvable(true);
-        else setTrouvee(resultats[0]);
+        if (resultats.length === 0) {
+          setIntrouvable(true);
+        } else {
+          setNumero('');
+          router.push({ pathname: '/agent/[id]', params: { id: resultats[0].id } });
+        }
       } catch (cause) {
         setError(cause instanceof ApiError ? cause.message : 'Recherche impossible.');
       } finally {
         setBusy(false);
       }
     },
-    [accessToken],
+    [accessToken, router],
   );
-
-  /** Fait avancer l'opération trouvée d'un cran, selon où elle en est. */
-  async function avancer(
-    operation: Transaction,
-    geste: 'ready' | 'close',
-  ): Promise<void> {
-    if (!accessToken) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const miseAJour =
-        geste === 'ready'
-          ? await api.markReady(operation.id, accessToken)
-          : await api.closeTransaction(operation.id, accessToken);
-      setTrouvee(miseAJour);
-      setNotice(
-        geste === 'ready'
-          ? `Fonds disponibles, le client peut venir (${operation.reference}).`
-          : `Opération clôturée et justificatif émis (${operation.reference}).`,
-      );
-      await load();
-    } catch (cause) {
-      setError(cause instanceof ApiError ? cause.message : 'Action impossible.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  /**
-   * Encaissement au comptoir : l'agent constate le paiement et l'atteste.
-   *
-   * ⚠️ Exécute le change et mouvemente la caisse dans la foulée. La référence
-   * du paiement est la SEULE trace vérifiable quand le client a réglé par
-   * mobile money — plus aucun justificatif n'est conservé.
-   */
-  async function encaisser(operation: Transaction): Promise<void> {
-    if (!accessToken) return;
-    setBusy(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const miseAJour = await api.collect(
-        operation.id,
-        referencePaiement.trim().length >= 3
-          ? { declaredRef: referencePaiement.trim() }
-          : {},
-        accessToken,
-      );
-      setTrouvee(miseAJour);
-      setAEncaisser(false);
-      setReferencePaiement('');
-      setNotice(`Paiement constaté, change exécuté (${operation.reference}).`);
-      await load();
-    } catch (cause) {
-      setError(cause instanceof ApiError ? cause.message : 'Encaissement impossible.');
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function verser(ligne: PayoutPending): Promise<void> {
     if (!accessToken) return;
@@ -213,254 +173,274 @@ export default function Service(): ReactNode {
     );
   }
 
+  const ouvrirListe = (filtre: string): void =>
+    router.push({ pathname: '/agent/operations', params: { filtre } });
+
   return (
     <Screen>
-      <Text style={T.h1}>Service</Text>
-      <ErrorBanner message={error} />
-      {notice ? (
-        <Card style={styles.notice}>
-          <Text style={[T.body, { color: C.ok }]}>{notice}</Text>
-        </Card>
-      ) : null}
+      <View style={styles.page}>
+        <Text style={T.h1}>Service</Text>
+        <ErrorBanner message={error} />
+        {notice ? (
+          <Card style={styles.notice}>
+            <Text style={[T.body, { color: C.ok }]}>{notice}</Text>
+          </Card>
+        ) : null}
 
-      {/* Un paiement simulé doit se voir : livrer des devises contre un
-          encaissement qui n'existe pas serait une perte sèche. */}
-      {board && !board.reel ? (
-        <Card style={styles.warn}>
-          <Text style={[T.body, { color: C.warn }]}>
-            Paiements simulés ({board.fournisseur}) — aucun argent ne circule.
-          </Text>
-        </Card>
-      ) : null}
+        {/* Un paiement simulé doit se voir : livrer des devises contre un
+            encaissement qui n'existe pas serait une perte sèche. */}
+        {board && !board.reel ? (
+          <Card style={styles.warn}>
+            <Text style={[T.body, { color: C.warn }]}>
+              Paiements simulés ({board.fournisseur}) — aucun argent ne circule.
+            </Text>
+          </Card>
+        ) : null}
 
-      <Card style={styles.block}>
-        <Text style={T.title}>Paiements mobile</Text>
-        <View style={styles.figures}>
-          <Figure
-            label="Flottant"
-            value={board?.soldeXof === null || board?.soldeXof === undefined ? '—' : xof(board.soldeXof)}
+        {/* --------------------------------------------- tableau du jour -- */}
+        <Text style={T.title}>Aujourd’hui</Text>
+        <View style={styles.tuiles}>
+          <Tuile
+            libelle="À encaisser"
+            valeur={String(jour?.aEncaisser ?? '—')}
+            couleur={C.warn}
+            onPress={() => ouvrirListe('A_ENCAISSER')}
           />
-          <Figure label="À encaisser" value={String(board?.encaissementsEnAttente ?? '—')} />
-          <Figure label="Versements en cours" value={String(board?.versementsEnCours ?? '—')} />
+          <Tuile
+            libelle="À remettre"
+            valeur={String(jour?.aRemettre ?? '—')}
+            couleur={C.accent}
+            onPress={() => ouvrirListe('A_REMETTRE')}
+          />
         </View>
-        <Text style={T.caption}>
-          Le fournisseur n’avertit pas de l’issue d’un versement : elle se demande. C’est
-          automatique chaque minute.
-        </Text>
-        <Button
-          label={busy ? 'Vérification…' : 'Rapprocher maintenant'}
-          onPress={() => void rapprocher()}
-          variant="ghost"
-          disabled={busy}
-        />
-      </Card>
+        <View style={styles.tuiles}>
+          <Tuile
+            libelle="Terminées"
+            valeur={String(jour?.clotureesAujourdhui ?? '—')}
+            couleur={C.ok}
+            onPress={() => ouvrirListe('TERMINEES')}
+          />
+          <Tuile
+            libelle="Volume réalisé"
+            valeur={jour ? xof(jour.volumeXofAujourdhui) : '—'}
+            couleur={C.navy}
+            onPress={() => ouvrirListe('TERMINEES')}
+          />
+        </View>
 
-      {/* ------------------------------------------ trouver une opération -- */}
-      <Card style={styles.block}>
-        <Text style={T.title}>Trouver une opération</Text>
-        <Text style={T.caption}>
-          Scannez le code que le client présente, ou saisissez son numéro.
-        </Text>
-        <Field
-          label="Numéro d’opération"
-          value={numero}
-          onChangeText={(texte) => {
-            setNumero(texte);
-            setIntrouvable(false);
+        {/* ------------------------------------------------ les gestes -- */}
+        <Geste
+          icone="qr-code-outline"
+          titre="Scanner le code d’un client"
+          detail="Retrouver son opération et l’encaisser"
+          onPress={() => {
+            setNotice(null);
+            setScanOuvert(true);
           }}
-          placeholder="HC-2026-000123"
-          autoCapitalize="none"
+          principal
         />
-        <View style={styles.actions}>
+        <Geste
+          icone="storefront-outline"
+          titre="Nouvelle opération au guichet"
+          detail="Client présent : espèces ou QR mobile money"
+          onPress={() => router.push('/agent/guichet')}
+        />
+        <Geste
+          icone="list-outline"
+          titre="Toutes les opérations"
+          detail="Suivi en direct, filtres par statut et période"
+          onPress={() => ouvrirListe('TOUTES')}
+        />
+        {profile?.role === 'SUPER_ADMIN' ? (
+          <Geste
+            icone="scan-outline"
+            titre="QR marchands"
+            detail="Enregistrer le QR Wave, Orange, MTN, Moov du bureau"
+            onPress={() => router.push('/agent/qr-marchands')}
+          />
+        ) : null}
+
+        {/* Le scan ne remplace pas la saisie, il l'accélère : caméra refusée
+            ou écran fissuré, l'agent doit pouvoir continuer. */}
+        <Card style={styles.block}>
+          <Text style={T.title}>Ou saisir le numéro</Text>
+          <Field
+            label="Numéro d’opération"
+            value={numero}
+            onChangeText={(texte) => {
+              setNumero(texte);
+              setIntrouvable(false);
+            }}
+            placeholder="HC-2026-000123"
+            autoCapitalize="none"
+          />
           <Button
-            label={busy ? 'Recherche…' : 'Rechercher'}
+            label={busy ? 'Recherche…' : 'Ouvrir l’opération'}
             onPress={() => void chercher(numero)}
             disabled={busy || numero.trim().length < 3}
           />
-          {/* Le scan ne remplace pas la saisie, il l'accélère : caméra refusée
-              ou écran fissuré, l'agent doit pouvoir continuer. */}
-          <Button label="Scanner le code" onPress={() => setScanOuvert(true)} variant="ghost" />
-        </View>
+          {introuvable ? (
+            <Text style={[T.bodyMute, { color: C.stop }]}>
+              Aucune opération ne porte ce numéro
+              {profile?.role === 'OPERATEUR' ? ' dans votre agence' : ''}. Vérifiez la saisie.
+            </Text>
+          ) : null}
+        </Card>
 
-        {introuvable ? (
-          <Text style={[T.bodyMute, { color: C.stop }]}>
-            Aucune opération ne porte ce numéro
-            {profile?.role === 'OPERATEUR' ? ' dans votre agence' : ''}. Vérifiez la saisie.
-          </Text>
+        {scanOuvert ? (
+          <ScanOverlay
+            onCode={(valeur) => {
+              setScanOuvert(false);
+              void chercher(valeur);
+            }}
+            onClose={() => setScanOuvert(false)}
+          />
         ) : null}
 
-        {trouvee ? (
-          <View style={styles.row}>
-            <Text style={T.label}>{trouvee.reference}</Text>
-            <Text style={T.rate}>
-              {money(
-                trouvee.targetAmount,
-                trouvee.targetCurrency === 'XOF' ? 0 : 2,
-                trouvee.targetCurrency,
-              )}
-            </Text>
-            <Text style={T.caption}>
-              {trouvee.statusLabel}
-              {trouvee.agency ? ` · ${trouvee.agency.name}` : ''}
-            </Text>
-
-            {/* Un seul geste proposé : celui que l'opération attend. Offrir
-                toutes les actions possibles ferait chercher la bonne, et se
-                tromper. */}
-            {EN_ATTENTE_DE_PAIEMENT.includes(trouvee.status) ? (
-              aEncaisser ? (
-                <View style={styles.confirm}>
-                  <Text style={T.body}>
-                    Confirmer avoir reçu{' '}
-                    {money(
-                      trouvee.sourceAmount,
-                      trouvee.sourceCurrency === 'XOF' ? 0 : 2,
-                      trouvee.sourceCurrency,
-                    )}{' '}
-                    pour {trouvee.reference} ?
-                  </Text>
-                  <Text style={T.caption}>
-                    Le change sera exécuté immédiatement et la caisse mouvementée.
-                  </Text>
-                  {/* ⚠️ Plus aucun justificatif n'est conservé : cette
-                      référence est la seule trace vérifiable d'un paiement
-                      mobile money. La saisir dès qu'elle existe. */}
-                  <Field
-                    label="Référence du paiement (si mobile money)"
-                    value={referencePaiement}
-                    onChangeText={setReferencePaiement}
-                    placeholder="relevée sur le téléphone du client"
-                    autoCapitalize="none"
-                  />
-                  <Button
-                    label={busy ? 'Encaissement…' : 'Confirmer l’encaissement'}
-                    onPress={() => void encaisser(trouvee)}
-                    variant="accent"
-                    disabled={busy}
-                  />
-                  <Button
-                    label="Annuler"
-                    onPress={() => {
-                      setAEncaisser(false);
-                      setReferencePaiement('');
-                    }}
-                    variant="ghost"
-                  />
-                </View>
-              ) : (
-                <Button
-                  label="Encaisser — j’ai reçu les fonds"
-                  onPress={() => {
-                    setAEncaisser(true);
-                    setReferencePaiement('');
-                    setNotice(null);
-                  }}
-                  disabled={busy}
-                />
-              )
-            ) : trouvee.status === 'CHANGE_EXECUTE' ? (
-              <Button
-                label="Marquer les fonds disponibles"
-                onPress={() => void avancer(trouvee, 'ready')}
-                disabled={busy}
-              />
-            ) : trouvee.status === 'PRETE_POUR_RETRAIT' ? (
-              trouvee.payoutMethod === 'MOBILE_MONEY' ? (
-                <Text style={T.caption}>
-                  Fonds à envoyer par mobile money — l’opération figure plus bas, avec sa
-                  confirmation.
-                </Text>
-              ) : (
-                <Button
-                  label="Remis au client — clôturer"
-                  onPress={() => void avancer(trouvee, 'close')}
-                  disabled={busy}
-                />
-              )
-            ) : (
-              <Text style={T.caption}>Rien à faire sur cette opération pour l’instant.</Text>
-            )}
+        {/* --------------------------------------------- paiements mobile -- */}
+        <Card style={styles.block}>
+          <Text style={T.title}>Paiements mobile</Text>
+          <View style={styles.figures}>
+            <Figure
+              label="Flottant"
+              value={board?.soldeXof === null || board?.soldeXof === undefined ? '—' : xof(board.soldeXof)}
+            />
+            <Figure label="À encaisser" value={String(board?.encaissementsEnAttente ?? '—')} />
+            <Figure label="Versements en cours" value={String(board?.versementsEnCours ?? '—')} />
           </View>
-        ) : null}
-      </Card>
-
-      {scanOuvert ? (
-        <ScanOverlay
-          onCode={(valeur) => {
-            setScanOuvert(false);
-            setNumero(valeur);
-            void chercher(valeur);
-          }}
-          onClose={() => setScanOuvert(false)}
-        />
-      ) : null}
-
-      {/* ------------------------------------------------ fonds à envoyer -- */}
-      <Card style={styles.block}>
-        <Text style={T.title}>Fonds à envoyer ({board?.aVerser.length ?? 0})</Text>
-        {(board?.aVerser.length ?? 0) === 0 ? (
-          <Text style={T.bodyMute}>
-            Rien à envoyer. Les opérations apparaissent dès que les fonds sont disponibles.
+          <Text style={T.caption}>
+            Le fournisseur n’avertit pas de l’issue d’un versement : elle se demande. C’est
+            automatique chaque minute.
           </Text>
-        ) : (
-          board?.aVerser.map((ligne) => (
-            <View key={ligne.transactionId} style={styles.row}>
-              <Text style={T.label}>{ligne.reference}</Text>
-              <Text style={T.rate}>{xof(ligne.montantXof)}</Text>
-              <Text style={T.caption}>
-                {ligne.beneficiaire}
-                {ligne.mobile ? ` · ${ligne.mobile}` : ' · numéro manquant'}
-              </Text>
-              {ligne.tentativesEchouees > 0 ? (
-                <Text style={[T.caption, { color: C.stop }]}>
-                  {ligne.tentativesEchouees} tentative(s) échouée(s) — chacune coûte des frais.
-                </Text>
-              ) : null}
+          <Button
+            label={busy ? 'Vérification…' : 'Rapprocher maintenant'}
+            onPress={() => void rapprocher()}
+            variant="ghost"
+            disabled={busy}
+          />
+        </Card>
 
-              {!ligne.mobile ? (
-                <Text style={[T.caption, { color: C.stop }]}>
-                  Numéro à corriger au dashboard avant tout envoi.
+        {/* ------------------------------------------------ fonds à envoyer -- */}
+        <Card style={styles.block}>
+          <Text style={T.title}>Fonds à envoyer ({board?.aVerser.length ?? 0})</Text>
+          {(board?.aVerser.length ?? 0) === 0 ? (
+            <Text style={T.bodyMute}>
+              Rien à envoyer. Les opérations apparaissent dès que les fonds sont disponibles.
+            </Text>
+          ) : (
+            board?.aVerser.map((ligne) => (
+              <View key={ligne.transactionId} style={styles.row}>
+                <Text style={T.label}>{ligne.reference}</Text>
+                <Text style={T.rate}>{xof(ligne.montantXof)}</Text>
+                <Text style={T.caption}>
+                  {ligne.beneficiaire}
+                  {ligne.mobile ? ` · ${ligne.mobile}` : ' · numéro manquant'}
                 </Text>
-              ) : aVerserConfirme === ligne.transactionId ? (
-                <View style={styles.confirm}>
-                  <Text style={T.body}>
-                    Envoyer {xof(ligne.montantXof)} à {ligne.beneficiaire} au {ligne.mobile} ?
+                {ligne.tentativesEchouees > 0 ? (
+                  <Text style={[T.caption, { color: C.stop }]}>
+                    {ligne.tentativesEchouees} tentative(s) échouée(s) — chacune coûte des frais.
                   </Text>
-                  <Text style={T.caption}>
-                    Des frais s’ajoutent, à la charge du bureau. Irréversible passé trois jours.
+                ) : null}
+
+                {!ligne.mobile ? (
+                  <Text style={[T.caption, { color: C.stop }]}>
+                    Numéro à corriger au dashboard avant tout envoi.
                   </Text>
+                ) : aVerserConfirme === ligne.transactionId ? (
+                  <View style={styles.confirm}>
+                    <Text style={T.body}>
+                      Envoyer {xof(ligne.montantXof)} à {ligne.beneficiaire} au {ligne.mobile} ?
+                    </Text>
+                    <Text style={T.caption}>
+                      Des frais s’ajoutent, à la charge du bureau. Irréversible passé trois jours.
+                    </Text>
+                    <Button
+                      label={busy ? 'Envoi…' : 'Confirmer l’envoi'}
+                      onPress={() => void verser(ligne)}
+                      variant="accent"
+                      disabled={busy}
+                    />
+                    <Button label="Annuler" onPress={() => setAVerserConfirme(null)} variant="ghost" />
+                  </View>
+                ) : (
                   <Button
-                    label={busy ? 'Envoi…' : 'Confirmer l’envoi'}
-                    onPress={() => void verser(ligne)}
-                    variant="accent"
+                    label="Envoyer les fonds"
+                    onPress={() => {
+                      setAVerserConfirme(ligne.transactionId);
+                      setNotice(null);
+                    }}
                     disabled={busy}
                   />
-                  <Button
-                    label="Annuler"
-                    onPress={() => setAVerserConfirme(null)}
-                    variant="ghost"
-                  />
-                </View>
-              ) : (
-                <Button
-                  label="Envoyer les fonds"
-                  onPress={() => {
-                    setAVerserConfirme(ligne.transactionId);
-                    setNotice(null);
-                  }}
-                  disabled={busy}
-                />
-              )}
-            </View>
-          ))
-        )}
-      </Card>
+                )}
+              </View>
+            ))
+          )}
+        </Card>
+      </View>
     </Screen>
   );
 }
 
 /** XOF n'a pas de décimales : les afficher donnerait un faux air de précision. */
 const xof = (value: string): string => money(value, 0, 'XOF');
+
+function Tuile({
+  libelle,
+  valeur,
+  couleur,
+  onPress,
+}: {
+  libelle: string;
+  valeur: string;
+  couleur: string;
+  onPress: () => void;
+}): ReactNode {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.tuile, shadow.card, pressed && styles.enfonce]}>
+      <View style={[styles.pastille, { backgroundColor: couleur }]} />
+      <Text style={T.caption} numberOfLines={1}>
+        {libelle}
+      </Text>
+      <Text style={T.h2} numberOfLines={1} adjustsFontSizeToFit>
+        {valeur}
+      </Text>
+    </Pressable>
+  );
+}
+
+function Geste({
+  icone,
+  titre,
+  detail,
+  onPress,
+  principal = false,
+}: {
+  icone: keyof typeof Ionicons.glyphMap;
+  titre: string;
+  detail: string;
+  onPress: () => void;
+  principal?: boolean;
+}): ReactNode {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.geste,
+        principal ? styles.gestePrincipal : shadow.card,
+        pressed && styles.enfonce,
+      ]}
+    >
+      <View style={[styles.icone, principal && styles.iconePrincipale]}>
+        <Ionicons name={icone} size={24} color={principal ? C.navy : C.navy} />
+      </View>
+      <View style={styles.gesteTexte}>
+        <Text style={[T.title, principal && { color: C.onDark }]}>{titre}</Text>
+        <Text style={[T.caption, principal && { color: C.onDarkDim }]}>{detail}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={20} color={principal ? C.onDark : C.textMute} />
+    </Pressable>
+  );
+}
 
 function Figure({ label, value }: { label: string; value: string }): ReactNode {
   return (
@@ -476,9 +456,39 @@ function Figure({ label, value }: { label: string; value: string }): ReactNode {
 }
 
 const styles = StyleSheet.create({
+  page: { padding: S.lg, paddingTop: S.huge, gap: S.md },
   block: { gap: S.sm },
   notice: { backgroundColor: C.okSoft, gap: S.xs },
   warn: { backgroundColor: C.warnSoft, gap: S.xs },
+  tuiles: { flexDirection: 'row', gap: S.sm },
+  tuile: {
+    flex: 1,
+    gap: 2,
+    padding: S.md,
+    borderRadius: R.md,
+    backgroundColor: C.surface,
+  },
+  pastille: { width: 8, height: 8, borderRadius: 4, marginBottom: S.xs },
+  geste: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: S.md,
+    padding: S.md,
+    borderRadius: R.md,
+    backgroundColor: C.surface,
+  },
+  gestePrincipal: { backgroundColor: C.navy, ...shadow.navy },
+  icone: {
+    width: 44,
+    height: 44,
+    borderRadius: R.sm,
+    backgroundColor: C.navySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconePrincipale: { backgroundColor: C.onDark },
+  gesteTexte: { flex: 1, gap: 2 },
+  enfonce: { transform: [{ scale: 0.98 }], opacity: 0.92 },
   figures: { flexDirection: 'row', gap: S.sm },
   figure: { flex: 1, gap: 2 },
   row: {
@@ -487,7 +497,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: C.line,
   },
-  actions: { gap: S.xs, paddingTop: S.xs },
   confirm: {
     gap: S.xs,
     paddingTop: S.xs,

@@ -106,6 +106,26 @@ bloquer une heure.
   redemanderait de nouveaux.
 - Les WebSockets du suivi temps réel passent sans configuration particulière.
 
+### Derrière le proxy partagé du VPS FITYA (montage en service)
+
+Le VPS Contabo `13.140.134.153` héberge plusieurs projets derrière **un seul**
+Caddy (`/opt/proxy`, réseau Docker externe `web`). Le Caddy de ce compose
+(profil `caddy`) n'y est donc **pas** démarré : il prendrait les ports 80/443.
+
+- Code dans `/opt/apps/hadjchanges`, secrets dans `deploy/.env` (droits 600).
+- Site déclaré dans `/opt/proxy/sites/hadjchanges.caddy`, qui vise
+  `hadjchanges-api:3061` et `hadjchanges-admin:3060` — les **noms de
+  conteneur**, uniques, et non `api` / `admin`, qu'un autre projet du même
+  réseau pourrait aussi porter.
+- `https://hadjchanges.fityalogisticgroup.com` (tableau de bord) et
+  `https://api-hadjchanges.fityalogisticgroup.com` (API).
+- Démonstration : `PAYMENT_DEMO=true`, stockage `local` sur le volume `uploads`.
+- Sauvegarde de la base chaque nuit à 2 h (crontab de `deploy`). ⚠️ Le volume
+  `uploads` (pièces KYC) n'est pas encore sauvegardé, et rien ne sort de la machine.
+
+Mise à jour du code : renvoyer `api/ admin/ deploy/` dans `/opt/apps/hadjchanges`,
+puis `docker compose up -d --build api admin`.
+
 ### Générer les deux secrets JWT
 
 ```bash

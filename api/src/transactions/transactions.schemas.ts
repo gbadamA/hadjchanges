@@ -55,6 +55,15 @@ export const receiptReviewSchema = z.object({
 export const transactionListSchema = z.object({
   status: z.nativeEnum(TransactionStatus).optional(),
   /**
+   * Plusieurs statuts, séparés par des virgules (« à remettre » en couvre
+   * trois). L'emporte sur `status` quand les deux sont fournis.
+   */
+  statuses: z
+    .string()
+    .transform((value) => value.split(',').map((part) => part.trim()).filter(Boolean))
+    .pipe(z.array(z.nativeEnum(TransactionStatus)).min(1))
+    .optional(),
+  /**
    * Référence lisible (`HC-2026-000123`), scannée ou saisie au comptoir.
    *
    * Recherche EXACTE, insensible à la casse : au guichet on retrouve une
@@ -81,7 +90,24 @@ export const transactionListSchema = z.object({
 export const counterCollectionSchema = z.object({
   declaredAmount: z.coerce.number().positive().optional(),
   declaredRef: z.string().trim().min(3).max(64).optional(),
+  /**
+   * Réseau réellement utilisé, s'il diffère de celui choisi à la création :
+   * au comptoir, le client paie souvent avec le portefeuille qu'il a sur lui.
+   */
+  depositMethod: z.nativeEnum(DepositMethod).optional(),
 });
+
+/**
+ * Réseaux mobile money payables par QR marchand. Un paiement par l'un d'eux
+ * produit TOUJOURS un identifiant de transaction chez l'opérateur : c'est la
+ * seule trace qui reste, il est donc exigé.
+ */
+export const MOBILE_MONEY_METHODS: ReadonlyArray<DepositMethod> = [
+  DepositMethod.WAVE,
+  DepositMethod.ORANGE_MONEY,
+  DepositMethod.MTN_MOMO,
+  DepositMethod.MOOV_MONEY,
+];
 
 export type CounterCollectionInput = z.infer<typeof counterCollectionSchema>;
 

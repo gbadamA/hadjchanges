@@ -55,34 +55,6 @@ async function call(method, path, { token, body } = {}) {
   return { status: response.status, data };
 }
 
-/** Dépôt multipart — le KYC et les reçus passent par des fichiers, pas du JSON. */
-async function upload(path, { token, fields = {}, files = {} }) {
-  const form = new FormData();
-  for (const [key, value] of Object.entries(fields)) form.append(key, String(value));
-  for (const [key, file] of Object.entries(files)) {
-    form.append(key, new Blob([file.content], { type: file.type }), file.name);
-  }
-  const response = await fetch(`${API}${path}`, {
-    method: 'POST',
-    headers: token ? { authorization: `Bearer ${token}` } : {},
-    body: form,
-  });
-  const text = await response.text();
-  let data = null;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = text;
-  }
-  return { status: response.status, data };
-}
-
-/** PNG 1×1 valide — assez pour prouver la chaîne de dépôt sans embarquer d'image. */
-const PNG_1PX = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
-  'base64',
-);
-
 /**
  * Sessions mises en cache par identifiant.
  *
@@ -567,34 +539,36 @@ async function main() {
     const initial = await call('GET', '/kyc/me', { token });
     check('un compte neuf n’a aucun dossier d’identité', initial.data?.status === 'NON_SOUMIS' && initial.data?.document === null);
 
-    const noFile = await upload('/kyc/documents', { token, fields: { type: 'CNI' } });
-    check('déposer sans fichier est refusé (400)', noFile.status === 400, `reçu ${noFile.status}`);
+    // Plus de photo : la pièce se DÉCLARE (type, numéro, expiration) et l'agent
+    // compare l'original en agence. Numéro et expiration sont donc obligatoires.
+    const future = new Date(Date.now() + 365 * 86_400_000).toISOString().slice(0, 10);
+    const pieceNumber = `CI${suffix}42`;
 
-    const badFormat = await upload('/kyc/documents', {
-      token,
-      fields: { type: 'CNI' },
-      files: { document: { content: 'MZ exécutable', type: 'application/x-msdownload', name: 'piece.exe' } },
-    });
-    check('un format non image/PDF est refusé (400)', badFormat.status === 400, `reçu ${badFormat.status}`);
+    const noNumber = await call('POST', '/kyc/documents', { token, body: { type: 'CNI', expiresAt: future } });
+    check('déclarer sans numéro est refusé (400)', noNumber.status === 400, `reçu ${noNumber.status}`);
 
-    const submitted = await upload('/kyc/documents', {
+    const expiredPiece = await call('POST', '/kyc/documents', {
       token,
-      fields: { type: 'CNI', documentNumber: 'CI0042198' },
-      files: { document: { content: PNG_1PX, type: 'image/png', name: 'cni.png' } },
+      body: { type: 'CNI', documentNumber: pieceNumber, expiresAt: '2020-01-01' },
     });
-    check('le dépôt d’une pièce valide est accepté (201)', submitted.status === 201, `reçu ${submitted.status}`);
+    check('une pièce expirée est refusée (400)', expiredPiece.status === 400, `reçu ${expiredPiece.status}`);
+
+    const submitted = await call('POST', '/kyc/documents', {
+      token,
+      body: { type: 'CNI', documentNumber: pieceNumber.toLowerCase(), expiresAt: future },
+    });
+    check('la déclaration d’une pièce valide est acceptée (201)', submitted.status === 201, `reçu ${submitted.status}`);
     check('le dossier part en attente de vérification', submitted.data?.status === 'EN_ATTENTE');
-    check('aucune clé de stockage ne sort de l’API', !JSON.stringify(submitted.data).includes('kyc/'), JSON.stringify(submitted.data));
+    check('le numéro est normalisé en majuscules', submitted.data?.documentNumber === pieceNumber, String(submitted.data?.documentNumber));
 
     const profile = await call('GET', '/users/me', { token });
     check('le compte bascule en attente de vérification', profile.data?.kycStatus === 'EN_ATTENTE');
 
-    const again = await upload('/kyc/documents', {
+    const again = await call('POST', '/kyc/documents', {
       token,
-      fields: { type: 'PASSEPORT' },
-      files: { document: { content: PNG_1PX, type: 'image/png', name: 'passeport.png' } },
+      body: { type: 'PASSEPORT', documentNumber: 'P1234567', expiresAt: future },
     });
-    check('re-déposer pendant l’examen est refusé (409)', again.status === 409, `reçu ${again.status}`);
+    check('re-déclarer pendant la vérification est refusé (409)', again.status === 409, `reçu ${again.status}`);
 
     // La file de traitement : réservée aux agents, jamais aux clients.
     const clientQueue = await call('GET', '/kyc/queue', { token });
@@ -604,32 +578,10 @@ async function main() {
     const mine = (queue.data ?? []).find((row) => row.id === submitted.data?.id);
     check('le dossier apparaît dans la file de l’agent', mine !== undefined);
     check('la file porte l’identité du client', mine?.client?.phone === candidate.phone, JSON.stringify(mine?.client ?? null));
+    check('la file porte la déclaration (numéro, expiration)', mine?.documentNumber === pieceNumber && typeof mine?.expiresAt === 'string');
 
-    // Accès au fichier : c'est ici que se joue la fuite de données.
-    const fileUrl = `/kyc/documents/${submitted.data?.id}/file`;
-    const anonymous = await fetch(`${API}${fileUrl}`);
-    check('la pièce n’est pas lisible sans jeton (401)', anonymous.status === 401, `reçu ${anonymous.status}`);
-
-    const stranger = await login({ identifier: '0709000002', password: CLIENT.password });
-    const stolen = await fetch(`${API}${fileUrl}`, {
-      headers: { authorization: `Bearer ${stranger.accessToken}` },
-    });
-    check('la pièce d’autrui est introuvable (404)', stolen.status === 404, `reçu ${stolen.status}`);
-
-    const owner = await fetch(`${API}${fileUrl}`, { headers: { authorization: `Bearer ${token}` } });
-    check('le propriétaire relit sa pièce (200)', owner.status === 200, `reçu ${owner.status}`);
-    check('la pièce n’est ni mise en cache ni indexée', /no-store/.test(owner.headers.get('cache-control') ?? '') && /noindex/.test(owner.headers.get('x-robots-tag') ?? ''));
-
-    const byAgent = await fetch(`${API}${fileUrl}`, {
-      headers: { authorization: `Bearer ${admin.accessToken}` },
-    });
-    check('l’agent habilité voit la pièce (200)', byAgent.status === 200, `reçu ${byAgent.status}`);
-    check('la pièce servie fait bien le poids du fichier déposé', Number(byAgent.headers.get('content-length')) === PNG_1PX.byteLength);
-
-    const noSelfie = await fetch(`${API}${fileUrl}?kind=selfie`, {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    check('un selfie absent répond 404', noSelfie.status === 404, `reçu ${noSelfie.status}`);
+    const noFileRoute = await call('GET', `/kyc/documents/${submitted.data?.id}/file`, { token: admin.accessToken });
+    check('plus aucune route ne sert de fichier de pièce (404)', noFileRoute.status === 404, `reçu ${noFileRoute.status}`);
 
     // Rejet : le motif est obligatoire et doit revenir au client.
     const vagueReject = await call('POST', `/kyc/documents/${submitted.data?.id}/reject`, {
@@ -638,7 +590,7 @@ async function main() {
     });
     check('un rejet sans motif explicite est refusé (400)', vagueReject.status === 400, `reçu ${vagueReject.status}`);
 
-    const reason = 'Photo illisible : les quatre coins de la pièce doivent être visibles.';
+    const reason = 'Le numéro déclaré ne correspond pas à la pièce présentée en agence.';
     const rejected = await call('POST', `/kyc/documents/${submitted.data?.id}/reject`, {
       token: admin.accessToken,
       body: { reason },
@@ -659,16 +611,11 @@ async function main() {
     check('un dossier déjà tranché ne se retranche pas (409)', twice.status === 409, `reçu ${twice.status}`);
 
     // Re-soumission après rejet : explicitement prévue par le cahier §3.2.
-    const resubmitted = await upload('/kyc/documents', {
+    const resubmitted = await call('POST', '/kyc/documents', {
       token,
-      fields: { type: 'CNI' },
-      files: {
-        document: { content: PNG_1PX, type: 'image/png', name: 'cni-2.png' },
-        selfie: { content: PNG_1PX, type: 'image/jpeg', name: 'selfie.jpg' },
-      },
+      body: { type: 'CNI', documentNumber: pieceNumber, expiresAt: future },
     });
-    check('la re-soumission après rejet est acceptée (201)', resubmitted.status === 201, `reçu ${resubmitted.status}`);
-    check('le selfie est pris en compte', resubmitted.data?.hasSelfie === true);
+    check('la re-déclaration après rejet est acceptée (201)', resubmitted.status === 201, `reçu ${resubmitted.status}`);
     const cleared = await call('GET', '/kyc/me', { token });
     check('le motif de l’ancien rejet disparaît du compte', cleared.data?.document?.rejectReason === null);
 
@@ -681,12 +628,25 @@ async function main() {
     const verified = await call('GET', '/users/me', { token });
     check('le compte devient vérifié', verified.data?.kycStatus === 'VALIDE');
 
-    const blockedResubmit = await upload('/kyc/documents', {
+    // Sans photo, le numéro est la seule chose qui relie la pièce à une
+    // personne : la même pièce validée ne peut pas servir à un second compte.
+    const other = await login({ identifier: '0709000002', password: CLIENT.password });
+    const otherMe = await call('GET', '/kyc/me', { token: other.accessToken });
+    if (otherMe.data?.status === 'NON_SOUMIS' || otherMe.data?.status === 'REJETE') {
+      const borrowed = await call('POST', '/kyc/documents', {
+        token: other.accessToken,
+        body: { type: 'CNI', documentNumber: pieceNumber, expiresAt: future },
+      });
+      check('une pièce validée sur un autre compte est refusée (409)', borrowed.status === 409, `reçu ${borrowed.status}`);
+    } else {
+      skip('pièce réutilisée par un second compte', `le client 0709000002 est déjà ${otherMe.data?.status}`);
+    }
+
+    const blockedResubmit = await call('POST', '/kyc/documents', {
       token,
-      fields: { type: 'CNI' },
-      files: { document: { content: PNG_1PX, type: 'image/png', name: 'cni-3.png' } },
+      body: { type: 'CNI', documentNumber: pieceNumber, expiresAt: future },
     });
-    check('un compte déjà vérifié ne redépose pas (409)', blockedResubmit.status === 409, `reçu ${blockedResubmit.status}`);
+    check('un compte déjà vérifié ne redéclare pas (409)', blockedResubmit.status === 409, `reçu ${blockedResubmit.status}`);
 
     const trace = await call('GET', '/audit?entity=KycDocument&take=20', { token: admin.accessToken });
     const actions = (trace.data ?? []).map((row) => row.action);
@@ -1729,7 +1689,7 @@ async function main() {
     check('les réglages sont lisibles par l’encadrement (200)', liste.status === 200, `reçu ${liste.status}`);
     check(
       'chaque réglage annonce son libellé et sa nature',
-      (liste.data ?? []).every((row) => row.label && ['phone', 'number'].includes(row.kind)),
+      (liste.data ?? []).every((row) => row.label && ['phone', 'number', 'qr'].includes(row.kind)),
     );
 
     const client = await login(CLIENT);
@@ -2034,6 +1994,28 @@ async function main() {
             socket.on('transaction:updated', resolve);
             setTimeout(() => resolve(null), 8000);
           });
+
+          // Le personnel suit TOUTES les opérations de son périmètre en direct :
+          // l'encadrement (salle globale) et l'agent de l'agence concernée.
+          const ecouterPersonnel = async (session) => {
+            const s = io(wsUrl, { transports: ['websocket'], auth: { token: session.accessToken } });
+            await new Promise((resolve) => {
+              s.on('connect', resolve);
+              setTimeout(resolve, 4000);
+            });
+            const recu = new Promise((resolve) => {
+              s.on('transaction:updated', (row) => {
+                if (row.id === annulable.id) resolve(row);
+              });
+              setTimeout(() => resolve(null), 8000);
+            });
+            return { s, recu };
+          };
+          const encadrement = await ecouterPersonnel(admin);
+          const agentAgence = annulable.agency ? await ecouterPersonnel(await login(OPERATEUR)) : null;
+          // L'opérateur du seed est rattaché au Plateau (code PLT).
+          const plt = (await call('GET', '/agencies')).data.find((a) => a.code === 'PLT');
+          const memeAgence = annulable.agency?.id === plt?.id;
           const annulee = await call('POST', `/transactions/${annulable.id}/cancel`, {
             token: client.accessToken,
             body: {},
@@ -2054,10 +2036,127 @@ async function main() {
           // Le socket est nominatif : y faire transiter la fiche client serait
           // une fuite gratuite, le client sachant déjà qui il est.
           check('la charge diffusée n’expose pas le bloc client', event?.client === undefined);
+
+          const vuEncadrement = await encadrement.recu;
+          check('l’encadrement reçoit le changement en direct', vuEncadrement?.status === 'ANNULEE');
+          check('le personnel reçoit la fiche client (pour savoir qui)', Boolean(vuEncadrement?.client?.phone));
+          encadrement.s.close();
+          if (agentAgence) {
+            const vuAgent = await agentAgence.recu;
+            if (memeAgence) {
+              check('l’agent de l’agence reçoit le changement en direct', vuAgent?.status === 'ANNULEE');
+            } else {
+              check('un agent d’une AUTRE agence ne reçoit rien', vuAgent === null);
+            }
+            agentAgence.s.close();
+          }
         }
       }
       socket.close();
     }
+  }
+
+  // ------------------------------------- comptoir : QR mobile money, suivi --
+  section('Comptoir : QR mobile money et tableau du jour');
+  {
+    const superAdmin = await login({ identifier: '0700000001', password: ADMIN.password });
+    const operateur = await login(OPERATEUR);
+    const client = await login(CLIENT);
+    const plateau = (await call('GET', '/agencies')).data.find((a) => a.code === 'PLT');
+
+    // QR marchand : contenu opaque, sensible à la casse, réservé au super-admin.
+    const contenuQr = `https://pay.wave.com/m/M_ci_TestHadj${Date.now().toString().slice(-4)}/c/ci/`;
+    const posé = await call('PATCH', '/settings/merchantQrWave', { token: superAdmin.accessToken, body: { value: contenuQr } });
+    check('le super-admin enregistre un QR marchand (200)', posé.status === 200, `reçu ${posé.status}`);
+    const publics = await call('GET', '/settings/public');
+    check('le QR est public, rendu TEL QUEL (casse comprise)', publics.data?.merchantQr?.WAVE === contenuQr, String(publics.data?.merchantQr?.WAVE));
+    const colléRaté = await call('PATCH', '/settings/merchantQrWave', { token: superAdmin.accessToken, body: { value: 'mauvais copier coller' } });
+    check('un QR avec espaces (copier-coller raté) est refusé (400)', colléRaté.status === 400, `reçu ${colléRaté.status}`);
+    const parAdmin = await call('PATCH', '/settings/merchantQrWave', { token: admin.accessToken, body: { value: contenuQr } });
+    check('un admin ne change pas où va l’argent (403)', parAdmin.status === 403, `reçu ${parAdmin.status}`);
+
+    // Guichet payé par QR : l'identifiant de l'opérateur est exigé.
+    const suffixe = Date.now().toString().slice(-6);
+    const clientGuichet = { firstName: 'Awa', lastName: 'Diallo', phone: `0566${suffixe}`, idType: 'CNI', idNumber: `CI${suffixe}9` };
+    const sansId = await call('POST', '/transactions/counter', {
+      token: operateur.accessToken,
+      body: { customer: clientGuichet, direction: 'VENTE_DEVISE', currencyCode: 'EUR', amount: 10, side: 'TARGET', depositMethod: 'WAVE' },
+    });
+    check('guichet mobile money sans identifiant : refusé (400)', sansId.status === 400, `reçu ${sansId.status}`);
+    const enDevises = await call('POST', '/transactions/counter', {
+      token: operateur.accessToken,
+      body: { customer: clientGuichet, direction: 'ACHAT_DEVISE', currencyCode: 'EUR', amount: 10, side: 'SOURCE', depositMethod: 'WAVE', paymentRef: 'T_DEVISES' },
+    });
+    check('mobile money pour un paiement EN DEVISES : refusé (400)', enDevises.status === 400, `reçu ${enDevises.status}`);
+    const parQr = await call('POST', '/transactions/counter', {
+      token: operateur.accessToken,
+      body: { customer: clientGuichet, direction: 'VENTE_DEVISE', currencyCode: 'EUR', amount: 10, side: 'TARGET', depositMethod: 'WAVE', paymentRef: `T_${suffixe}` },
+    });
+    check('guichet payé par QR Wave avec identifiant (201)', parQr.status === 201, `reçu ${parQr.status} ${JSON.stringify(parQr.data).slice(0, 120)}`);
+    check('le réseau est enregistré sur l’opération', parQr.data?.depositMethod === 'WAVE', String(parQr.data?.depositMethod));
+    check('l’identifiant de paiement est conservé comme preuve', parQr.data?.proofs?.[0]?.declaredRef === `T_${suffixe}`);
+
+    // Encaissement d'une opération de l'application, au réseau réellement utilisé.
+    const appli = await call('POST', '/transactions', {
+      token: client.accessToken,
+      body: {
+        direction: 'VENTE_DEVISE', currencyCode: 'EUR', amount: 10, side: 'TARGET',
+        agencyId: plateau.id, depositMethod: 'ORANGE_MONEY', payoutMethod: 'ESPECES_AGENCE',
+      },
+    });
+    if (appli.status !== 201) {
+      skip('encaissement au réseau du client', `création impossible (${appli.status} ${appli.data?.message ?? ''})`);
+    } else {
+      const sansRef = await call('POST', `/transactions/${appli.data.id}/encaissement`, { token: operateur.accessToken, body: {} });
+      check('encaisser du mobile money sans identifiant : refusé (400)', sansRef.status === 400, `reçu ${sansRef.status}`);
+      const parMtn = await call('POST', `/transactions/${appli.data.id}/encaissement`, {
+        token: operateur.accessToken,
+        body: { depositMethod: 'MTN_MOMO', declaredRef: `MP${suffixe}` },
+      });
+      check('encaissement par un autre réseau que prévu (201)', parMtn.status === 201, `reçu ${parMtn.status} ${parMtn.data?.message ?? ''}`);
+      check('le réseau constaté remplace celui choisi', parMtn.data?.depositMethod === 'MTN_MOMO', String(parMtn.data?.depositMethod));
+    }
+
+    const enEuros = await call('POST', '/transactions', {
+      token: client.accessToken,
+      body: {
+        direction: 'ACHAT_DEVISE', currencyCode: 'EUR', amount: 10, side: 'SOURCE',
+        agencyId: plateau.id, depositMethod: 'ESPECES_AGENCE', payoutMethod: 'ESPECES_AGENCE',
+      },
+    });
+    if (enEuros.status === 201) {
+      const parWave = await call('POST', `/transactions/${enEuros.data.id}/encaissement`, {
+        token: operateur.accessToken,
+        body: { depositMethod: 'WAVE', declaredRef: 'T_EUROS' },
+      });
+      check('encaisser par Wave une opération payée en euros : refusé (400)', parWave.status === 400, `reçu ${parWave.status}`);
+      await call('POST', `/transactions/${enEuros.data.id}/cancel`, { token: client.accessToken, body: {} });
+    } else {
+      skip('garde FCFA à l’encaissement', `création impossible (${enEuros.status})`);
+    }
+
+    // Tableau du jour et liste multi-statuts.
+    const jour = await call('GET', '/transactions/board', { token: operateur.accessToken });
+    check('le tableau du jour répond à l’agent (200)', jour.status === 200, `reçu ${jour.status}`);
+    check(
+      'il porte les quatre compteurs',
+      ['aEncaisser', 'aRemettre', 'clotureesAujourdhui'].every((k) => Number.isInteger(jour.data?.[k])) &&
+        typeof jour.data?.volumeXofAujourdhui === 'string',
+      JSON.stringify(jour.data),
+    );
+    const jourClient = await call('GET', '/transactions/board', { token: client.accessToken });
+    check('un client n’a pas de tableau de service (403)', jourClient.status === 403, `reçu ${jourClient.status}`);
+    const multi = await call('GET', '/transactions?statuses=CREEE,CLOTUREE&take=200', { token: operateur.accessToken });
+    check(
+      'le filtre multi-statuts ne rend que ces statuts',
+      multi.status === 200 && (multi.data ?? []).every((t) => ['CREEE', 'CLOTUREE'].includes(t.status)),
+    );
+    check(
+      'l’opérateur ne voit que son agence',
+      (multi.data ?? []).every((t) => t.agency === null || t.agency.id === plateau.id),
+    );
+    const malForme = await call('GET', '/transactions?statuses=FOO', { token: operateur.accessToken });
+    check('un filtre mal formé répond 400, pas 500', malForme.status === 400, `reçu ${malForme.status}`);
   }
 
   // ------------------------------------------------------------------ bilan --

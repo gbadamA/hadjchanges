@@ -1,13 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import {
-  ApiError,
-  fetchProtectedImage,
-  kyc,
-  type KycDocumentRow,
-  type KycStatus,
-} from '../../../lib/api';
+import { ApiError, kyc, type KycDocumentRow, type KycStatus } from '../../../lib/api';
 import { useAuth } from '../../../lib/auth';
 
 const TABS: Array<{ status: KycStatus; label: string }> = [
@@ -26,10 +20,11 @@ const TYPE_LABEL: Record<string, string> = {
 /**
  * File de validation des identités (cahier §3.1).
  *
- * L'agent doit voir la pièce et décider sans quitter l'écran : la liste à
- * gauche, le document à droite, les deux actions dessous. Un rejet exige un
- * motif — c'est ce motif que le client recevra, et lui seul lui dira quoi
- * corriger.
+ * Plus de photo : le client DÉCLARE sa pièce depuis l'application, et l'agent
+ * valide après avoir comparé l'original présenté en agence à cette
+ * déclaration. La liste à gauche, la déclaration à droite, les deux actions
+ * dessous. Un rejet exige un motif — c'est ce motif que le client recevra, et
+ * lui seul lui dira quoi corriger.
  */
 export default function KycQueuePage() {
   const { token } = useAuth();
@@ -139,7 +134,7 @@ export default function KycQueuePage() {
                   {row.client?.phone} · {TYPE_LABEL[row.type] ?? row.type}
                 </p>
                 <p className="text-caption text-light-muted dark:text-dark-muted">
-                  Déposé le {new Date(row.createdAt).toLocaleDateString('fr-FR')}
+                  Déclaré le {new Date(row.createdAt).toLocaleDateString('fr-FR')}
                 </p>
               </button>
             </li>
@@ -154,21 +149,31 @@ export default function KycQueuePage() {
                   {selected.client?.firstName} {selected.client?.lastName}
                 </h2>
                 <p className="text-light-muted dark:text-dark-muted">
-                  {TYPE_LABEL[selected.type] ?? selected.type}
-                  {selected.documentNumber ? ` · nº ${selected.documentNumber}` : ''}
+                  {selected.client?.phone}
+                  {selected.client?.email ? ` · ${selected.client.email}` : ''}
                 </p>
               </div>
-              <span className="rounded-full bg-secondary/15 px-3 py-1 text-caption text-secondary-hover">
-                {selected.hasSelfie ? 'Selfie fourni' : 'Sans selfie'}
-              </span>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <ProtectedImage id={selected.id} kind="document" label="Pièce d’identité" />
-              {selected.hasSelfie ? (
-                <ProtectedImage id={selected.id} kind="selfie" label="Selfie" />
-              ) : null}
-            </div>
+            <dl className="grid gap-4 rounded-sm border border-light-border p-4 dark:border-dark-border sm:grid-cols-3">
+              <Declared label="Pièce" value={TYPE_LABEL[selected.type] ?? selected.type} />
+              <Declared label="Numéro" value={selected.documentNumber ?? '—'} mono />
+              <Declared
+                label="Expire le"
+                value={
+                  selected.expiresAt
+                    ? new Date(selected.expiresAt).toLocaleDateString('fr-FR')
+                    : '—'
+                }
+              />
+            </dl>
+
+            {selected.status === 'EN_ATTENTE' ? (
+              <p className="text-caption text-light-muted dark:text-dark-muted">
+                Ne validez qu’après avoir eu l’original en main : nom, numéro et date
+                d’expiration doivent correspondre exactement à cette déclaration.
+              </p>
+            ) : null}
 
             {selected.rejectReason ? (
               <p className="rounded-sm bg-danger/10 p-3 text-body text-danger">
@@ -191,7 +196,7 @@ export default function KycQueuePage() {
                     disabled={busy}
                     className="rounded-sm bg-success px-5 py-2.5 font-medium text-white transition hover:opacity-90 disabled:opacity-40"
                   >
-                    Valider l’identité
+                    Original vérifié — valider
                   </button>
                   <button
                     onClick={() => void decide('reject')}
@@ -210,58 +215,11 @@ export default function KycQueuePage() {
   );
 }
 
-/**
- * Une pièce d'identité ne se charge pas par `<img src>` : l'URL exige un jeton
- * en en-tête. On récupère le binaire, on en fait une URL d'objet locale, et on
- * la révoque au démontage pour ne pas laisser le fichier en mémoire.
- */
-function ProtectedImage({
-  id,
-  kind,
-  label,
-}: {
-  id: string;
-  kind: 'document' | 'selfie';
-  label: string;
-}) {
-  const { token } = useAuth();
-  const [url, setUrl] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    if (!token) return;
-    let objectUrl: string | null = null;
-    let cancelled = false;
-
-    fetchProtectedImage(id, kind, token)
-      .then((result) => {
-        objectUrl = result;
-        if (cancelled) URL.revokeObjectURL(result);
-        else setUrl(result);
-      })
-      .catch(() => {
-        if (!cancelled) setFailed(true);
-      });
-
-    return () => {
-      cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [id, kind, token]);
-
+function Declared({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
-    <figure className="space-y-2">
-      <figcaption className="text-caption font-medium">{label}</figcaption>
-      <div className="grid h-56 place-items-center overflow-hidden rounded-sm border border-light-border bg-light-bg dark:border-dark-border dark:bg-dark-bg">
-        {url ? (
-          // eslint-disable-next-line @next/next/no-img-element -- URL d'objet locale, pas une ressource distante optimisable
-          <img src={url} alt={label} className="h-full w-full object-contain" />
-        ) : (
-          <span className="text-caption text-light-muted dark:text-dark-muted">
-            {failed ? 'Document illisible' : 'Chargement…'}
-          </span>
-        )}
-      </div>
-    </figure>
+    <div className="space-y-1">
+      <dt className="text-caption text-light-muted dark:text-dark-muted">{label}</dt>
+      <dd className={`text-body font-medium ${mono ? 'font-mono tracking-wide' : ''}`}>{value}</dd>
+    </div>
   );
 }

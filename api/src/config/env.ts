@@ -42,6 +42,17 @@ const envSchema = z.object({
    * la clé ou le secret manquent.
    */
   PAYMENT_DRIVER: z.enum(['simulation', 'wave']).default('simulation'),
+  /**
+   * Autorise le simulateur EN PRODUCTION, pour une démonstration en ligne.
+   * Le tableau de bord affiche alors un bandeau « DÉMONSTRATION ».
+   *
+   * ⚠️ Chaîne `true` exigée, pas `z.coerce.boolean()` : celui-ci lit la
+   * chaîne « false » comme vraie. À retirer dès que Wave est branché.
+   */
+  PAYMENT_DEMO: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((valeur) => valeur === 'true'),
   WAVE_API_KEY: z.string().default(''),
   /** Secret de webhook (`wave_sn_WHS_…`) — distinct de la clé d'API. */
   WAVE_WEBHOOK_SECRET: z.string().default(''),

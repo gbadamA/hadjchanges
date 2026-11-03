@@ -74,8 +74,9 @@ export class CounterService {
         commissionAmount: priced.commissionAmount,
         amountXof: priced.amountXof,
         rateId: priced.rateId,
-        // Espèces des deux côtés : le client pose des billets, on lui en rend.
-        depositMethod: 'ESPECES_AGENCE',
+        // Espèces ou QR marchand à l'entrée ; toujours des billets à la sortie,
+        // le client repart avec ses fonds.
+        depositMethod: input.depositMethod,
         payoutMethod: 'ESPECES_AGENCE',
         payoutDetails: input.note ?? null,
         status: TransactionStatus.CREEE,
@@ -92,9 +93,24 @@ export class CounterService {
         amountXof: created.amountXof.toString(),
         client: `${customer.firstName} ${customer.lastName}`,
         beneficiaire: input.beneficiary?.name ?? null,
+        modeDepot: input.depositMethod,
+        referencePaiement: input.paymentRef ?? null,
       },
       ip,
     });
+
+    // Paiement par QR marchand : l'identifiant de l'opérateur est la seule
+    // trace, il est conservé comme toute attestation de comptoir.
+    if (input.paymentRef) {
+      await this.prisma.paymentReceipt.create({
+        data: {
+          transactionId: created.id,
+          declaredAmount: created.sourceAmount,
+          declaredRef: input.paymentRef,
+          attestedById: operator.id,
+        },
+      });
+    }
 
     // Vigilance avant que l'argent ne sorte : un signalement qui arriverait
     // après la remise des billets ne servirait plus à rien.

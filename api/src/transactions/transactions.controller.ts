@@ -7,18 +7,14 @@ import {
   Query,
   Req,
   Res,
-  UploadedFile,
-  UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role, TransactionStatus } from '@prisma/client';
 import type { Request, Response } from 'express';
 import type { AuthUser } from '../common/auth-user';
 import { CurrentUser, Roles } from '../common/decorators';
 import { ApiZodBody, ZBody } from '../common/zod';
 import { ExportService } from '../documents/export.service';
-import type { UploadedDocument } from '../kyc/kyc.service';
 import { counterTransactionSchema, type CounterTransactionInput } from './counter.schemas';
 import { CounterService } from './counter.service';
 import { PaymentProofService } from './payment-proof.service';
@@ -95,6 +91,14 @@ export class TransactionsController {
   @ApiOperation({ summary: 'Liste des transactions, filtrable (dashboard).' })
   list(@Query() query: unknown, @CurrentUser() current: AuthUser): Promise<TransactionView[]> {
     return this.transactions.list(transactionListSchema.parse(query), current);
+  }
+
+  // ⚠️ Déclarée AVANT `@Get(':id')` : sinon « board » serait lu comme un id.
+  @Roles(...STAFF)
+  @Get('board')
+  @ApiOperation({ summary: 'Tableau du jour de l’agent (périmètre de son agence).' })
+  board(@CurrentUser() current: AuthUser) {
+    return this.transactions.board(current);
   }
 
   /**

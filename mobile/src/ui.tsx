@@ -268,7 +268,13 @@ export function Segmented<T extends string>({
             onPress={() => onChange(option.value)}
             style={[styles.segment, active && styles.segmentActive]}
           >
-            <Text style={[styles.segmentLabel, active && styles.segmentLabelActive]}>
+            {/* Une ligne, réduite au besoin : à cinq choix (réseaux de paiement),
+                un libellé qui passe à la ligne déforme toute la barre. */}
+            <Text
+              style={[styles.segmentLabel, active && styles.segmentLabelActive]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
               {option.label}
             </Text>
           </Pressable>

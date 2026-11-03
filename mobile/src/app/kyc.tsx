@@ -1,11 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { api, ApiError, type KycState, type PickedFile } from '../api';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { api, ApiError, type KycState } from '../api';
 import { useAuth } from '../auth';
-import { C, R, S, T } from '../theme';
+import { C, S, T } from '../theme';
 import { Badge, Button, Card, ErrorBanner, Field, FormScreen, Loader, Segmented } from '../ui';
 
 /** Pièces acceptées — mêmes valeurs que l'enum `DocumentType` côté API. */
@@ -15,12 +14,44 @@ const TYPES = [
   { value: 'PERMIS', label: 'Permis' },
 ] as const;
 
+const TYPE_LABEL: Record<string, string> = {
+  CNI: 'Carte nationale d’identité',
+  PASSEPORT: 'Passeport',
+  PERMIS: 'Permis de conduire',
+  CARTE_CONSULAIRE: 'Carte consulaire',
+};
+
+/**
+ * Saisie JJ/MM/AAAA au fil de la frappe : les barres se posent seules, le
+ * client ne tape que des chiffres (clavier numérique, pas de sélecteur de date
+ * à trois molettes pour une date qu'il lit sur sa carte).
+ */
+function maskDate(text: string): string {
+  const digits = text.replace(/\D/g, '').slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+/** JJ/MM/AAAA → AAAA-MM-JJ, ou null si la date n'existe pas (31/02…). */
+function toIsoDate(text: string): string | null {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(text);
+  if (!match) return null;
+  const [, day, month, year] = match;
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  if (date.getUTCDate() !== Number(day) || date.getUTCMonth() !== Number(month) - 1) return null;
+  return `${year}-${month}-${day}`;
+}
+
 /**
  * Vérification d'identité — l'étape qui débloque tout le reste.
  *
- * Le client doit comprendre d'un coup d'œil où il en est : rien déposé, en
- * cours d'examen, refusé (avec le motif, et le droit de recommencer), ou
- * validé. Un statut sans explication laisse quelqu'un bloqué sans savoir
+ * Plus aucune photo : le client DÉCLARE sa pièce (type, numéro, expiration) et
+ * présente l'original en agence, où un agent le compare à la déclaration.
+ *
+ * Le client doit comprendre d'un coup d'œil où il en est : rien déclaré, en
+ * attente de vérification, refusé (avec le motif, et le droit de recommencer),
+ * ou validé. Un statut sans explication laisse quelqu'un bloqué sans savoir
  * pourquoi, et c'est un appel au service client.
  */
 export default function Kyc(): ReactNode {
@@ -31,8 +62,7 @@ export default function Kyc(): ReactNode {
   const [loading, setLoading] = useState(true);
   const [type, setType] = useState<(typeof TYPES)[number]['value']>('CNI');
   const [documentNumber, setDocumentNumber] = useState('');
-  const [document, setDocument] = useState<PickedFile | null>(null);
-  const [selfie, setSelfie] = useState<PickedFile | null>(null);
+  const [expiry, setExpiry] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -58,52 +88,28 @@ export default function Kyc(): ReactNode {
     void load();
   }, [load]);
 
-  const pick = async (target: 'document' | 'selfie'): Promise<void> => {
-    // La permission se demande au moment du besoin, pas au lancement : on
-    // explique par l'action pourquoi on ouvre la galerie.
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setError('Autorisez l’accès aux photos pour déposer votre pièce.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.8,
-      allowsEditing: target === 'selfie',
-    });
-    if (result.canceled || result.assets.length === 0) return;
-
-    const asset = result.assets[0];
-    const file: PickedFile = {
-      uri: asset.uri,
-      name: asset.fileName ?? `${target}.jpg`,
-      type: asset.mimeType ?? 'image/jpeg',
-    };
-    setError(null);
-    if (target === 'document') setDocument(file);
-    else setSelfie(file);
-  };
+  const expiresAt = toIsoDate(expiry);
+  const expired = expiresAt !== null && new Date(expiresAt).getTime() <= Date.now();
+  const expiryError =
+    expiry.length === 10 && expiresAt === null
+      ? 'Cette date n’existe pas.'
+      : expired
+        ? 'Cette pièce est expirée : une pièce en cours de validité est obligatoire.'
+        : null;
+  const ready = documentNumber.trim().length >= 4 && expiresAt !== null && !expired;
 
   const submit = async (): Promise<void> => {
-    if (!accessToken || !document) return;
+    if (!accessToken || !expiresAt || !ready) return;
     setBusy(true);
     setError(null);
     try {
-      await api.submitKyc(
-        {
-          type,
-          documentNumber: documentNumber.trim() || undefined,
-          document,
-          selfie: selfie ?? undefined,
-        },
-        accessToken,
-      );
-      setDocument(null);
-      setSelfie(null);
+      await api.submitKyc({ type, documentNumber: documentNumber.trim(), expiresAt }, accessToken);
+      setDocumentNumber('');
+      setExpiry('');
       await refreshProfile();
       await load();
     } catch (cause) {
-      setError(cause instanceof ApiError ? cause.message : 'Dépôt impossible.');
+      setError(cause instanceof ApiError ? cause.message : 'Envoi impossible.');
     } finally {
       setBusy(false);
     }
@@ -121,7 +127,7 @@ export default function Kyc(): ReactNode {
           <Text style={T.h1}>Vérifier mon identité</Text>
         </View>
         <Text style={T.bodyMute}>
-          La vérification d’identité se fait depuis votre compte. Connectez-vous pour déposer votre
+          La vérification d’identité se fait depuis votre compte. Connectez-vous pour déclarer votre
           pièce.
         </Text>
         <Button label="Se connecter" onPress={() => router.replace('/connexion')} />
@@ -131,6 +137,7 @@ export default function Kyc(): ReactNode {
   }
 
   const status = state?.status ?? 'NON_SOUMIS';
+  const declared = state?.document;
   const canSubmit = status === 'NON_SOUMIS' || status === 'REJETE';
 
   return (
@@ -144,10 +151,16 @@ export default function Kyc(): ReactNode {
 
       {status === 'EN_ATTENTE' ? (
         <Card style={styles.state}>
-          <Badge label="En cours de vérification" color={C.warn} soft={C.warnSoft} />
+          <Badge label="En attente de vérification" color={C.warn} soft={C.warnSoft} />
+          {declared ? (
+            <Text style={T.label}>
+              {TYPE_LABEL[declared.type] ?? declared.type}
+              {declared.documentNumber ? ` · nº ${declared.documentNumber}` : ''}
+            </Text>
+          ) : null}
           <Text style={T.bodyMute}>
-            Votre pièce est entre les mains d’un agent. Vous serez prévenu dès qu’elle est validée,
-            en général sous quelques heures ouvrées.
+            Présentez l’original de cette pièce en agence : un agent la compare à votre déclaration
+            et active votre compte. Vous serez prévenu dès que c’est fait.
           </Text>
         </Card>
       ) : null}
@@ -164,9 +177,9 @@ export default function Kyc(): ReactNode {
 
       {status === 'REJETE' ? (
         <Card style={[styles.state, styles.rejected]}>
-          <Badge label="Pièce refusée" color={C.stop} soft={C.stopSoft} />
-          <Text style={T.body}>{state?.document?.rejectReason}</Text>
-          <Text style={T.caption}>Corrigez le point signalé, puis déposez une nouvelle pièce.</Text>
+          <Badge label="Déclaration refusée" color={C.stop} soft={C.stopSoft} />
+          <Text style={T.body}>{declared?.rejectReason}</Text>
+          <Text style={T.caption}>Corrigez le point signalé, puis déclarez à nouveau votre pièce.</Text>
         </Card>
       ) : null}
 
@@ -174,38 +187,42 @@ export default function Kyc(): ReactNode {
 
       {canSubmit ? (
         <>
-          <Text style={T.bodyMute}>
-            Une pièce d’identité en cours de validité est obligatoire avant toute opération de
-            change. Vos documents ne servent qu’à cette vérification.
-          </Text>
+          <Card style={styles.how}>
+            <View style={styles.howRow}>
+              <Ionicons name="document-text-outline" size={20} color={C.navy} />
+              <Text style={[T.body, styles.howText]}>Déclarez votre pièce ici — aucune photo.</Text>
+            </View>
+            <View style={styles.howRow}>
+              <Ionicons name="business-outline" size={20} color={C.navy} />
+              <Text style={[T.body, styles.howText]}>
+                Présentez l’original en agence : l’agent valide votre compte.
+              </Text>
+            </View>
+          </Card>
 
           <Segmented value={type} onChange={setType} options={[...TYPES]} />
 
           <Field
-            label="Numéro de la pièce (facultatif)"
+            label="Numéro de la pièce"
             value={documentNumber}
             onChangeText={setDocumentNumber}
             autoCapitalize="none"
             placeholder="CI0000000"
           />
 
-          <PickSlot
-            label="Pièce d’identité"
-            hint="Les quatre coins doivent être visibles et le texte lisible."
-            file={document}
-            onPick={() => void pick('document')}
-          />
-          <PickSlot
-            label="Selfie (recommandé)"
-            hint="Une photo de votre visage accélère la vérification."
-            file={selfie}
-            onPick={() => void pick('selfie')}
+          <Field
+            label="Date d’expiration"
+            value={expiry}
+            onChangeText={(text) => setExpiry(maskDate(text))}
+            keyboardType="numeric"
+            placeholder="JJ/MM/AAAA"
+            error={expiryError}
           />
 
           <Button
-            label={busy ? 'Envoi…' : 'Envoyer mon dossier'}
+            label={busy ? 'Envoi…' : 'Envoyer ma déclaration'}
             onPress={() => void submit()}
-            disabled={busy || !document}
+            disabled={busy || !ready}
           />
         </>
       ) : null}
@@ -213,63 +230,11 @@ export default function Kyc(): ReactNode {
   );
 }
 
-function PickSlot({
-  label,
-  hint,
-  file,
-  onPick,
-}: {
-  label: string;
-  hint: string;
-  file: PickedFile | null;
-  onPick: () => void;
-}): ReactNode {
-  return (
-    <Pressable onPress={onPick} style={[styles.slot, file && styles.slotFilled]}>
-      {file ? (
-        <Image source={{ uri: file.uri }} style={styles.preview} resizeMode="cover" />
-      ) : (
-        <View style={styles.slotIcon}>
-          <Ionicons name="camera-outline" size={24} color={C.navy} />
-        </View>
-      )}
-      <View style={styles.slotText}>
-        <Text style={T.label}>{label}</Text>
-        <Text style={T.caption}>{file ? 'Appuyez pour remplacer' : hint}</Text>
-      </View>
-      <Ionicons
-        name={file ? 'checkmark-circle' : 'chevron-forward'}
-        size={22}
-        color={file ? C.ok : C.textMute}
-      />
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: S.md, paddingTop: S.xxl },
   state: { gap: S.sm, alignItems: 'flex-start' },
   rejected: { borderColor: C.stop, borderWidth: 1.5 },
-  slot: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: S.md,
-    backgroundColor: C.surface,
-    borderRadius: R.md,
-    borderWidth: 1.5,
-    borderColor: C.line,
-    borderStyle: 'dashed',
-    padding: S.md,
-  },
-  slotFilled: { borderStyle: 'solid', borderColor: C.ok },
-  slotIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: R.sm,
-    backgroundColor: C.navySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  preview: { width: 52, height: 52, borderRadius: R.sm, backgroundColor: C.surface2 },
-  slotText: { flex: 1, gap: 2 },
+  how: { gap: S.sm },
+  howRow: { flexDirection: 'row', alignItems: 'center', gap: S.sm },
+  howText: { flex: 1 },
 });

@@ -84,6 +84,14 @@ export default function DashLayout({ children }: { children: ReactNode }) {
       </aside>
 
       <main className="flex-1 overflow-x-hidden bg-light-bg p-6 dark:bg-dark-bg lg:p-10">
+        {/* Figé à la construction (NEXT_PUBLIC_*), comme l'adresse de l'API. Va
+            de pair avec PAYMENT_DEMO=true côté API : sans ce bandeau, une
+            opération « payée » en démonstration passerait pour un vrai paiement. */}
+        {process.env.NEXT_PUBLIC_DEMO === 'true' && (
+          <p className="mb-6 rounded-sm border border-warning bg-warning/10 px-4 py-2 text-caption font-medium text-warning">
+            DÉMONSTRATION — les paiements sont simulés, aucun argent ne circule.
+          </p>
+        )}
         {forbidden ? (
           <div className="surface mx-auto max-w-lg p-8 text-center">
             <h1 className="font-display text-h2">Accès réservé</h1>

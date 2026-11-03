@@ -48,12 +48,18 @@ export function construireAdaptateurPaiement(env: Env): PaymentService {
   // ⚠️ Simulation EN PRODUCTION : des clients verraient leurs opérations
   // passer en « payé » sans avoir rien payé. C'est pire qu'une panne, puisque
   // rien ne le signalerait — d'où ce refus net de démarrer.
-  if (env.NODE_ENV === 'production') {
+  // Seule exception : une démonstration DÉCLARÉE (`PAYMENT_DEMO=true`), que le
+  // tableau de bord affiche en bandeau pour que personne ne s'y trompe.
+  if (env.NODE_ENV === 'production' && !env.PAYMENT_DEMO) {
     throw new Error(
       'PAYMENT_DRIVER=simulation en production : les opérations seraient ' +
         'déclarées payées sans aucun paiement réel. Renseignez ' +
-        'WAVE_API_KEY et WAVE_WEBHOOK_SECRET, puis PAYMENT_DRIVER=wave.',
+        'WAVE_API_KEY et WAVE_WEBHOOK_SECRET, puis PAYMENT_DRIVER=wave ' +
+        '(ou PAYMENT_DEMO=true pour une démonstration assumée).',
     );
+  }
+  if (env.NODE_ENV === 'production') {
+    logger.warn('Mode DÉMONSTRATION : paiements simulés, aucun argent ne circule.');
   }
 
   // Le simulateur signe ses événements : à défaut de secret configuré, un

@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Role, TransactionStatus } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../common/auth-user';
@@ -6,7 +11,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ExchangeExecutor } from './exchange-executor';
 import { TransactionStateMachine } from './transaction-state-machine';
-import type { CounterCollectionInput } from './transactions.schemas';
+import { MOBILE_MONEY_METHODS, type CounterCollectionInput } from './transactions.schemas';
 import type { TransactionView } from './transactions.view';
 
 /**
@@ -60,6 +65,7 @@ export class PaymentProofService {
         sourceAmount: true,
         agencyId: true,
         depositMethod: true,
+        sourceCurrency: { select: { isBase: true } },
       },
     });
     if (!transaction) throw new NotFoundException('Transaction introuvable.');
@@ -80,6 +86,19 @@ export class PaymentProofService {
 
     this.machine.assertPaiementProuve(transaction.status, TransactionStatus.PAIEMENT_CONFIRME);
 
+    // Le réseau constaté au comptoir l'emporte sur celui choisi à la création.
+    const methode = input.depositMethod ?? transaction.depositMethod;
+    if (MOBILE_MONEY_METHODS.includes(methode) && !transaction.sourceCurrency.isBase) {
+      throw new BadRequestException(
+        'Le mobile money ne règle qu’en FCFA : cette opération se paie en devises, au comptoir.',
+      );
+    }
+    if (MOBILE_MONEY_METHODS.includes(methode) && !input.declaredRef) {
+      throw new BadRequestException(
+        'Paiement mobile money : saisissez l’identifiant de transaction affiché sur le téléphone du client.',
+      );
+    }
+
     await this.prisma.$transaction([
       // La preuve est écrite DÉJÀ VALIDÉE : il n'y a personne d'autre à
       // attendre, l'agent est à la fois celui qui constate et celui qui valide.
@@ -93,7 +112,11 @@ export class PaymentProofService {
       }),
       this.prisma.transaction.update({
         where: { id: transactionId },
-        data: { status: TransactionStatus.PAIEMENT_CONFIRME, paidAt: new Date() },
+        data: {
+          status: TransactionStatus.PAIEMENT_CONFIRME,
+          paidAt: new Date(),
+          depositMethod: methode,
+        },
       }),
     ]);
 
@@ -105,7 +128,7 @@ export class PaymentProofService {
       before: { status: transaction.status },
       after: {
         reference: transaction.reference,
-        modeDepot: transaction.depositMethod,
+        modeDepot: methode,
         montantConstate: (input.declaredAmount ?? transaction.sourceAmount).toString(),
         referencePaiement: input.declaredRef ?? null,
       },

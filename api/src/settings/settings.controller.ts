@@ -21,8 +21,22 @@ import { SettingsService } from './settings.service';
 export interface PublicSettings {
   /** Numéro sur lequel le client dépose, par mode de paiement. */
   depositNumbers: Partial<Record<DepositMethod, string>>;
+  /**
+   * Contenu du QR marchand du bureau, par réseau : l'agent l'affiche au
+   * comptoir et le client le scanne avec l'application de son opérateur.
+   * Public par nature — il est fait pour être montré.
+   */
+  merchantQr: Partial<Record<DepositMethod, string>>;
   rateLockMinutes: number;
 }
+
+/** Réseau mobile money → clé du QR marchand en base. */
+export const MERCHANT_QR_KEYS = {
+  [DepositMethod.WAVE]: 'merchantQrWave',
+  [DepositMethod.ORANGE_MONEY]: 'merchantQrOrange',
+  [DepositMethod.MTN_MOMO]: 'merchantQrMtn',
+  [DepositMethod.MOOV_MONEY]: 'merchantQrMoov',
+} as const;
 
 /**
  * Réglages modifiables depuis le pilotage, avec leur nature.
@@ -40,6 +54,14 @@ const EDITABLE = {
   depositNumberOrange: { label: 'Numéro de dépôt Orange Money', kind: 'phone' },
   depositNumberMtn: { label: 'Numéro de dépôt MTN MoMo', kind: 'phone' },
   depositNumberMoov: { label: 'Numéro de dépôt Moov Money', kind: 'phone' },
+  depositNumberWave: { label: 'Numéro de dépôt Wave', kind: 'phone' },
+  // Contenu brut du QR marchand, relevé en scannant l'autocollant fourni par
+  // l'opérateur. Jamais retapé à la main : un caractère faux et l'argent du
+  // client part chez un autre marchand.
+  merchantQrWave: { label: 'QR marchand Wave', kind: 'qr' },
+  merchantQrOrange: { label: 'QR marchand Orange Money', kind: 'qr' },
+  merchantQrMtn: { label: 'QR marchand MTN MoMo', kind: 'qr' },
+  merchantQrMoov: { label: 'QR marchand Moov Money', kind: 'qr' },
   rateLockMinutes: { label: 'Durée du taux verrouillé (minutes)', kind: 'number' },
   rateStaleHours: { label: 'Alerte si un taux n’est pas republié depuis (heures)', kind: 'number' },
   lcbFtThresholdXof: { label: 'Seuil de déclaration LCB-FT (XOF)', kind: 'number' },
@@ -50,7 +72,9 @@ const EDITABLE = {
 type EditableKey = keyof typeof EDITABLE;
 
 const updateSchema = z.object({
-  value: z.string().trim().min(1, 'Une valeur est requise.').max(120),
+  // 1 000 et non 120 : un QR marchand (EMVCo) dépasse souvent 200 caractères.
+  // Les autres natures sont recontrôlées plus bas.
+  value: z.string().trim().min(1, 'Une valeur est requise.').max(1000),
 });
 
 @ApiTags('réglages')
@@ -105,6 +129,16 @@ export class SettingsController {
     if (meta.kind === 'phone' && !/^\d{10}$/.test(body.value.replace(/\s/g, ''))) {
       throw new BadRequestException('Un numéro de dépôt compte 10 chiffres.');
     }
+    if (meta.kind !== 'qr' && body.value.length > 120) {
+      throw new BadRequestException('Valeur trop longue (120 caractères maximum).');
+    }
+    // Un QR marchand est une chaîne opaque, mais jamais une phrase : un espace
+    // ou un saut de ligne signale un copier-coller raté plutôt qu'un scan.
+    if (meta.kind === 'qr' && (body.value.length < 8 || /\s/.test(body.value))) {
+      throw new BadRequestException(
+        'Contenu de QR invalide : scannez l’autocollant fourni par l’opérateur.',
+      );
+    }
 
     const before = await this.prisma.setting.findUnique({ where: { key } });
     const value = meta.kind === 'phone' ? body.value.replace(/\s/g, '') : body.value;
@@ -137,19 +171,30 @@ export class SettingsController {
   @Get('public')
   @ApiOperation({ summary: 'Numéros de dépôt et durée du verrou de taux.' })
   async publicSettings(): Promise<PublicSettings> {
-    const [orange, mtn, moov, lockMinutes] = await Promise.all([
+    const [orange, mtn, moov, wave, lockMinutes] = await Promise.all([
       this.settings.getString('depositNumberOrange'),
       this.settings.getString('depositNumberMtn'),
       this.settings.getString('depositNumberMoov'),
+      this.settings.getString('depositNumberWave'),
       this.settings.rateLockMinutes(),
     ]);
+
+    const merchantQr: PublicSettings['merchantQr'] = {};
+    for (const [method, key] of Object.entries(MERCHANT_QR_KEYS)) {
+      const value = await this.settings.getString(key);
+      // Un réglage jamais saisi n'est pas un QR : l'absence doit se voir,
+      // pas s'afficher comme un code vide que le client scannerait en vain.
+      if (value) merchantQr[method as DepositMethod] = value;
+    }
 
     return {
       depositNumbers: {
         [DepositMethod.ORANGE_MONEY]: orange,
         [DepositMethod.MTN_MOMO]: mtn,
         [DepositMethod.MOOV_MONEY]: moov,
+        [DepositMethod.WAVE]: wave,
       },
+      merchantQr,
       rateLockMinutes: lockMinutes,
     };
   }

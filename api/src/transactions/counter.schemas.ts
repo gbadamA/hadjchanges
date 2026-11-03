@@ -1,4 +1,4 @@
-import { DocumentType, TransactionDirection } from '@prisma/client';
+import { DepositMethod, DocumentType, TransactionDirection } from '@prisma/client';
 import { z } from 'zod';
 
 /**
@@ -44,6 +44,40 @@ export const counterTransactionSchema = z.object({
   /** Absente = l'agence de l'opérateur. Un admin peut en désigner une autre. */
   agencyId: z.string().cuid().optional(),
   note: z.string().trim().max(300).optional(),
-});
+
+  // --- Le paiement ---------------------------------------------------------
+  /**
+   * Espèces posées au comptoir, ou paiement par QR marchand du réseau choisi.
+   * La carte bancaire n'a pas de terminal au guichet : elle n'est pas offerte.
+   */
+  depositMethod: z
+    .enum([
+      DepositMethod.ESPECES_AGENCE,
+      DepositMethod.WAVE,
+      DepositMethod.ORANGE_MONEY,
+      DepositMethod.MTN_MOMO,
+      DepositMethod.MOOV_MONEY,
+    ])
+    .default(DepositMethod.ESPECES_AGENCE),
+  /** Identifiant de transaction chez l'opérateur — exigé hors espèces. */
+  paymentRef: z.string().trim().min(3).max(64).optional(),
+}).refine(
+  (input) => input.depositMethod === DepositMethod.ESPECES_AGENCE || Boolean(input.paymentRef),
+  {
+    path: ['paymentRef'],
+    message: 'Paiement mobile money : saisissez l’identifiant de transaction affiché sur le téléphone du client.',
+  },
+).refine(
+  // Le mobile money ne transporte que des FCFA : le client ne peut payer ainsi
+  // que lorsqu'il ACHÈTE des devises (le bureau vend). Accepter l'inverse
+  // enregistrerait des euros « reçus par Wave », ce qui n'existe pas.
+  (input) =>
+    input.depositMethod === DepositMethod.ESPECES_AGENCE ||
+    input.direction === TransactionDirection.VENTE_DEVISE,
+  {
+    path: ['depositMethod'],
+    message: 'Le mobile money ne règle qu’en FCFA : réservé au client qui achète des devises.',
+  },
+);
 
 export type CounterTransactionInput = z.infer<typeof counterTransactionSchema>;

@@ -211,8 +211,8 @@ export default function NouvelleOperation(): ReactNode {
           title={attente ? 'Vérification en cours' : 'Pièce d’identité à fournir'}
           message={
             attente
-              ? 'Votre pièce est en cours de contrôle par un opérateur. Vous serez prévenu dès qu’elle est validée, et vous pourrez alors lancer votre opération.'
-              : 'Le change exige une pièce d’identité valide. Déposez-la une fois : vos opérations suivantes ne la redemanderont pas.'
+              ? 'Présentez l’original de votre pièce en agence : un agent la vérifie et active votre compte. Vous pourrez alors lancer votre opération.'
+              : 'Le change exige une pièce d’identité valide. Déclarez-la une fois, sans photo : vos opérations suivantes ne la redemanderont pas.'
           }
           action={
             attente ? (

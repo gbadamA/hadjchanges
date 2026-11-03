@@ -83,6 +83,23 @@ cas(
   { NODE_ENV: 'production' },
   { refus: 'déclarées payées sans aucun paiement réel' },
 );
+cas(
+  'PAYMENT_DEMO=false explicite en production',
+  { NODE_ENV: 'production', PAYMENT_DEMO: 'false' },
+  { refus: 'déclarées payées sans aucun paiement réel' },
+);
+cas(
+  'PAYMENT_DEMO=1 (valeur non reconnue) en production',
+  { NODE_ENV: 'production', PAYMENT_DEMO: '1' },
+  { refus: 'PAYMENT_DEMO' },
+);
+
+console.log('\n=== Démonstration déclarée en production ===');
+cas(
+  'driver=simulation, NODE_ENV=production, PAYMENT_DEMO=true',
+  { NODE_ENV: 'production', PAYMENT_DEMO: 'true' },
+  { adaptateur: 'Simulation' },
+);
 
 console.log('\n=== Configuration complète ===');
 cas(

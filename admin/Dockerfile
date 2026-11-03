@@ -12,6 +12,9 @@ COPY . .
 # pas lues au démarrage. Elle doit donc être fournie ici, en argument de build.
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+# Bandeau « DÉMONSTRATION » ; à garder aligné sur PAYMENT_DEMO côté API.
+ARG NEXT_PUBLIC_DEMO=false
+ENV NEXT_PUBLIC_DEMO=$NEXT_PUBLIC_DEMO
 RUN npm run build
 
 # ─────────────────────────────────────────────────────────────── exécution ──

@@ -20,9 +20,18 @@ import { Button } from './ui';
 export function ScanOverlay({
   onCode,
   onClose,
+  brut = false,
+  consigne = 'Présentez le code de l’opération dans le cadre',
 }: {
   onCode: (valeur: string) => void;
   onClose: () => void;
+  /**
+   * Rend le contenu TEL QUEL. Indispensable pour un QR marchand : une adresse
+   * Wave ou un champ EMVCo distinguent la casse, et la mise en majuscules d'un
+   * numéro d'opération les rendrait invalides.
+   */
+  brut?: boolean;
+  consigne?: string;
 }): ReactNode {
   const [permission, demander] = useCameraPermissions();
   /**
@@ -75,7 +84,7 @@ export function ScanOverlay({
           onBarcodeScanned={({ data }) => {
             if (dejaLu.current || !data) return;
             dejaLu.current = true;
-            onCode(data.trim().toUpperCase());
+            onCode(brut ? data.trim() : data.trim().toUpperCase());
           }}
         />
 
@@ -83,9 +92,7 @@ export function ScanOverlay({
             code et promène le téléphone. */}
         <View pointerEvents="none" style={styles.viseur}>
           <View style={styles.cadre} />
-          <Text style={[T.body, styles.texteClair]}>
-            Présentez le code de l’opération dans le cadre
-          </Text>
+          <Text style={[T.body, styles.texteClair]}>{consigne}</Text>
         </View>
 
         <Pressable style={styles.fermer} onPress={onClose} hitSlop={12}>

@@ -108,6 +108,8 @@ export interface Transaction {
   cancelReason: string | null;
   createdAt: string;
   agency: { id: string; name: string; city: string } | null;
+  /** Présent seulement pour le personnel : le client sait déjà qui il est. */
+  client?: { id: string; firstName: string; lastName: string; phone: string } | null;
   /** Attestations de paiement : qui a constaté, quand, sous quelle référence. */
   proofs: Array<{
     id: string;
@@ -143,6 +145,8 @@ export interface Profile {
   phone: string;
   email: string | null;
   role: 'CLIENT' | 'OPERATEUR' | 'ADMIN' | 'SUPER_ADMIN';
+  /** Agence de rattachement d'un agent ; nulle pour l'encadrement et les clients. */
+  agencyId?: string | null;
   kycStatus: KycStatus;
   kycRejectReason: string | null;
 }

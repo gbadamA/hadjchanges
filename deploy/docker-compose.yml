@@ -91,14 +91,20 @@ services:
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       CORS_ORIGINS: https://${DOMAINE_ADMIN}
+      API_PUBLIC_URL: https://${DOMAINE_API}
+      PAYMENT_DRIVER: ${PAYMENT_DRIVER:-simulation}
+      PAYMENT_DEMO: ${PAYMENT_DEMO:-false}
+      WAVE_API_KEY: ${WAVE_API_KEY:-}
+      WAVE_WEBHOOK_SECRET: ${WAVE_WEBHOOK_SECRET:-}
       STORAGE_DRIVER: ${STORAGE_DRIVER:-s3}
+      STORAGE_LOCAL_DIR: /app/uploads
       S3_ENDPOINT: ${S3_ENDPOINT}
       S3_REGION: ${S3_REGION:-auto}
       S3_BUCKET: ${S3_BUCKET}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
       SMTP_HOST: ${SMTP_HOST}
-      SMTP_PORT: ${SMTP_PORT}
+      SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER}
       SMTP_PASS: ${SMTP_PASS}
       MAIL_FROM: ${MAIL_FROM:-HadjChanges <no-reply@hadjchanges.ci>}
@@ -109,6 +115,14 @@ services:
       retries: 3
       # Les migrations tournent au démarrage : laisser le temps avant de juger.
       start_period: 90s
+    # `web` = réseau du proxy Caddy PARTAGÉ du serveur (/opt/proxy), qui joint
+    # ce conteneur par son nom unique `hadjchanges-api`. Le réseau par défaut
+    # reste nécessaire pour joindre `db`.
+    networks: [default, web]
+    volumes:
+      # Pièces KYC et reçus, quand STORAGE_DRIVER=local : un volume survit aux
+      # reconstructions, le disque du conteneur non.
+      - uploads:/app/uploads
 
   # ─────────────────────────────────────────────── tableau de bord ──
   admin:
@@ -119,6 +133,7 @@ services:
         # ⚠️ Figée à la CONSTRUCTION (variable NEXT_PUBLIC_*). La changer exige
         # `docker compose build admin`, un simple redémarrage ne suffit PAS.
         NEXT_PUBLIC_API_URL: https://${DOMAINE_API}
+        NEXT_PUBLIC_DEMO: ${PAYMENT_DEMO:-false}
     container_name: hadjchanges-admin
     restart: unless-stopped
     ports:
@@ -126,8 +141,38 @@ services:
     expose: ["3060"]
     environment:
       NODE_ENV: production
+    networks: [default, web]
+
+  # ──────────────────────────────────────────── données de départ ──
+  # Ponctuel, jamais démarré par `up` :
+  #   docker compose --profile seed run --rm seed
+  # Étage `build` de l'image API, car `tsx` est une dépendance de développement.
+  # En production, le seed exige SEED_ADMIN_PASSWORD et SEED_CLIENT_PASSWORD.
+  seed:
+    profiles: ["seed"]
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+      target: build
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-hadjchanges}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-hadjchanges}?schema=public
+      DIRECT_URL: postgresql://${POSTGRES_USER:-hadjchanges}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-hadjchanges}?schema=public
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+      SEED_CLIENT_PASSWORD: ${SEED_CLIENT_PASSWORD:-}
+    command: ["npx", "tsx", "prisma/seed.ts"]
 
 volumes:
   db-data:
+  uploads:
   caddy-data:
   caddy-config:
+
+networks:
+  # Créé une fois pour toutes sur le serveur (`docker network create web`),
+  # partagé par tous les projets derrière le même Caddy.
+  web:
+    external: true

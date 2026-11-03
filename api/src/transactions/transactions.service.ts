@@ -154,6 +154,54 @@ export class TransactionsService {
     return toTransactionView(transaction, { withClient: isStaff });
   }
 
+  /**
+   * Tableau du jour de l'agent : ce qui l'attend, ce qui est fait.
+   *
+   * Compté EN BASE et dans le même périmètre que la liste — un opérateur ne
+   * compte que son agence. « À encaisser » et « à remettre » ne sont pas
+   * bornés au jour : une opération créée hier et pas encore payée attend
+   * toujours quelqu'un.
+   */
+  async board(viewer: AuthUser): Promise<{
+    aEncaisser: number;
+    aRemettre: number;
+    clotureesAujourdhui: number;
+    volumeXofAujourdhui: string;
+  }> {
+    const agencyId = viewer.role === Role.OPERATEUR ? (viewer.agencyId ?? undefined) : undefined;
+    // Abidjan vit à UTC+0 toute l'année : minuit UTC est minuit local.
+    const debutDuJour = new Date();
+    debutDuJour.setUTCHours(0, 0, 0, 0);
+
+    const [aEncaisser, aRemettre, clotures] = await Promise.all([
+      this.prisma.transaction.count({ where: { agencyId, status: TransactionStatus.CREEE } }),
+      this.prisma.transaction.count({
+        where: {
+          agencyId,
+          status: {
+            in: [
+              TransactionStatus.PAIEMENT_CONFIRME,
+              TransactionStatus.CHANGE_EXECUTE,
+              TransactionStatus.PRETE_POUR_RETRAIT,
+            ],
+          },
+        },
+      }),
+      this.prisma.transaction.aggregate({
+        where: { agencyId, status: TransactionStatus.CLOTUREE, closedAt: { gte: debutDuJour } },
+        _count: true,
+        _sum: { amountXof: true },
+      }),
+    ]);
+
+    return {
+      aEncaisser,
+      aRemettre,
+      clotureesAujourdhui: clotures._count,
+      volumeXofAujourdhui: (clotures._sum.amountXof ?? 0).toString(),
+    };
+  }
+
   /** Liste du dashboard, avec les filtres du cahier §3.1. */
   async list(query: TransactionListInput, viewer: AuthUser): Promise<TransactionView[]> {
     const currency = query.currencyCode
@@ -162,7 +210,7 @@ export class TransactionsService {
 
     const rows = await this.prisma.transaction.findMany({
       where: {
-        status: query.status,
+        status: query.statuses ? { in: query.statuses } : query.status,
         // Référence scannée ou saisie : le cloisonnement par agence ci-dessous
         // s'applique quand même, un opérateur ne retrouve donc pas par ce biais
         // une opération d'une autre agence.

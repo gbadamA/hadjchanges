@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { OnGatewayConnection, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
+import { Role } from '@prisma/client';
 import type { Server, Socket } from 'socket.io';
 import type { Env } from '../config/env';
 import {
@@ -12,6 +13,22 @@ import {
 
 /** Une salle par client : personne ne reçoit les transactions d'un autre. */
 const userRoom = (userId: string): string => `tx:user:${userId}`;
+
+/**
+ * Salles du personnel, pour le suivi de toutes les opérations.
+ *
+ * Même périmètre que `GET /transactions` : un opérateur rattaché à une agence
+ * ne voit QUE la sienne, l'encadrement voit tout. Un opérateur sans agence
+ * tombe dans la salle globale, comme la liste le lui montre.
+ */
+const STAFF_ALL = 'tx:staff:all';
+const agencyRoom = (agencyId: string): string => `tx:staff:agency:${agencyId}`;
+
+interface SocketPayload {
+  sub: string;
+  role: Role;
+  agencyId: string | null;
+}
 
 /**
  * Suivi des transactions EN DIRECT (cahier §3.2 « Suivi en temps réel du statut
@@ -46,10 +63,17 @@ export class TransactionsGateway implements OnGatewayConnection {
       return;
     }
     try {
-      const payload = this.jwt.verify<{ sub: string }>(token, {
+      const payload = this.jwt.verify<SocketPayload>(token, {
         secret: this.config.get('JWT_ACCESS_SECRET', { infer: true }),
       });
       void client.join(userRoom(payload.sub));
+      if (payload.role !== Role.CLIENT) {
+        void client.join(
+          payload.role === Role.OPERATEUR && payload.agencyId
+            ? agencyRoom(payload.agencyId)
+            : STAFF_ALL,
+        );
+      }
     } catch {
       // Jeton expiré ou falsifié : on le dit, le client sait alors qu'il doit
       // rafraîchir sa session plutôt que d'attendre dans le vide.
@@ -77,6 +101,12 @@ export class TransactionsGateway implements OnGatewayConnection {
       this.server
         .to(userRoom(transaction.clientId))
         .emit('transaction:updated', toTransactionView(transaction));
+      // Le personnel, lui, a besoin de savoir pour qui : vue AVEC le client.
+      const staffRooms = [STAFF_ALL];
+      if (transaction.agencyId) staffRooms.push(agencyRoom(transaction.agencyId));
+      this.server
+        .to(staffRooms)
+        .emit('transaction:updated', toTransactionView(transaction, { withClient: true }));
       this.logger.log(`Transaction ${transaction.reference} → ${transaction.status} diffusée`);
     }
     return view;

@@ -13,7 +13,14 @@ const CHANNELS = [
 
 /** Les numéros de dépôt en tête : c'est là que part l'argent des clients. */
 const GROUPS = [
-  { title: 'Numéros de dépôt', keys: ['depositNumberOrange', 'depositNumberMtn', 'depositNumberMoov'] },
+  {
+    title: 'Numéros de dépôt',
+    keys: ['depositNumberWave', 'depositNumberOrange', 'depositNumberMtn', 'depositNumberMoov'],
+  },
+  {
+    title: 'QR marchands',
+    keys: ['merchantQrWave', 'merchantQrOrange', 'merchantQrMtn', 'merchantQrMoov'],
+  },
   { title: 'Règles de change', keys: ['rateLockMinutes', 'rateStaleHours'] },
   { title: 'Conformité et plafonds', keys: ['lcbFtThresholdXof', 'defaultDailyLimitXof', 'defaultMonthlyLimitXof'] },
 ];
@@ -136,8 +143,12 @@ export default function ReglagesPage() {
                   <input
                     value={drafts[key] ?? ''}
                     onChange={(event) => setDrafts({ ...drafts, [key]: event.target.value })}
-                    inputMode={row.kind === 'number' ? 'numeric' : 'tel'}
-                    className="tabular w-full rounded-sm border border-light-border bg-light-bg px-4 py-2.5 outline-none focus:border-tertiary dark:border-dark-border dark:bg-dark-bg"
+                    inputMode={
+                      row.kind === 'number' ? 'numeric' : row.kind === 'qr' ? 'text' : 'tel'
+                    }
+                    placeholder={row.kind === 'qr' ? 'Non configuré' : undefined}
+                    spellCheck={row.kind === 'qr' ? false : undefined}
+                    className={`${row.kind === 'qr' ? 'font-mono text-caption' : ''} tabular w-full rounded-sm border border-light-border bg-light-bg px-4 py-2.5 outline-none focus:border-tertiary dark:border-dark-border dark:bg-dark-bg`}
                   />
                 </label>
                 <button
@@ -150,6 +161,14 @@ export default function ReglagesPage() {
               </div>
             );
           })}
+
+          {group.title === 'QR marchands' ? (
+            <p className="text-caption text-light-muted dark:text-dark-muted">
+              Le plus sûr est de les enregistrer depuis l’application mobile (Service → QR
+              marchands), en scannant l’autocollant fourni par chaque opérateur. L’agent les
+              affiche au comptoir avec le montant exact, le client les scanne pour payer.
+            </p>
+          ) : null}
 
           {group.title === 'Numéros de dépôt' ? (
             <p className="text-caption text-light-muted dark:text-dark-muted">

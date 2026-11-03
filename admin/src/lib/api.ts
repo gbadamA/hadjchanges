@@ -104,7 +104,6 @@ export interface KycDocumentRow {
   status: KycStatus;
   documentNumber: string | null;
   expiresAt: string | null;
-  hasSelfie: boolean;
   rejectReason: string | null;
   createdAt: string;
   reviewedAt: string | null;
@@ -640,7 +639,7 @@ export const staff = {
 export interface SettingRow {
   key: string;
   label: string;
-  kind: 'phone' | 'number';
+  kind: 'phone' | 'number' | 'qr';
   value: string;
   updatedAt: string | null;
 }
@@ -670,25 +669,3 @@ export const kyc = {
       token,
     }),
 };
-
-/**
- * URL d'une pièce déposée. Elle n'est PAS publique : le jeton part en en-tête,
- * donc l'image se charge par `fetch` puis `URL.createObjectURL`, jamais par un
- * `<img src>` direct.
- */
-export async function fetchProtectedImage(
-  documentId: string,
-  kind: 'document' | 'selfie',
-  token: string,
-): Promise<string> {
-  return protectedBlob(`/api/kyc/documents/${documentId}/file?kind=${kind}`, token);
-}
-
-/** Justificatif de paiement — même règle : l'URL exige un jeton. */
-async function protectedBlob(path: string, token: string): Promise<string> {
-  const response = await fetch(`${API_URL}${path}`, {
-    headers: { authorization: `Bearer ${token}` },
-  });
-  if (!response.ok) throw new ApiError('Document illisible.', response.status);
-  return URL.createObjectURL(await response.blob());
-}

@@ -208,11 +208,11 @@ model KycDocument {
   userId  String
   user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   type    DocumentType
-  /// null quand l'agent a vérifié la pièce **de visu** au guichet sans la
-  /// photographier. Obligatoire pour un dépôt depuis l'application, et pour
-  /// toute opération au-dessus du seuil de déclaration.
+  /// Toujours null depuis le 2026-11-03 : plus aucune photo de pièce n'est
+  /// déposée, l'agent vérifie l'original de visu. Colonne gardée pour les
+  /// dossiers antérieurs.
   fileUrl String?
-  /// Selfie de vérification — optionnel mais recommandé (cahier §3.2).
+  /// Idem : plus de selfie depuis le 2026-11-03.
   selfieUrl String?
 
   documentNumber String?

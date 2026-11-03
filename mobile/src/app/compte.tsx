@@ -9,10 +9,10 @@ import { Badge, Button, Card, EmptyState, Screen } from '../ui';
 
 /** Ce que le statut veut dire pour le client, en une phrase actionnable. */
 const KYC_HINT: Record<KycStatus, string> = {
-  NON_SOUMIS: 'Déposez votre pièce d’identité pour pouvoir effectuer une opération de change.',
-  EN_ATTENTE: 'Votre pièce est en cours de vérification. Vous serez prévenu dès qu’elle est validée.',
+  NON_SOUMIS: 'Déclarez votre pièce d’identité, puis présentez-la en agence, pour pouvoir effectuer une opération de change.',
+  EN_ATTENTE: 'Présentez l’original de votre pièce en agence : un agent la vérifie et active votre compte.',
   VALIDE: 'Votre identité est vérifiée : vous pouvez changer vos devises.',
-  REJETE: 'Votre pièce a été refusée. Corrigez le point signalé et déposez-en une nouvelle.',
+  REJETE: 'Votre déclaration a été refusée. Corrigez le point signalé et déclarez à nouveau votre pièce.',
 };
 
 /** Couleur du statut KYC — même code couleur que le dashboard. */
@@ -68,7 +68,7 @@ export default function Compte(): ReactNode {
           <Text style={T.bodyMute}>{KYC_HINT[profile.kycStatus]}</Text>
           {profile.kycStatus !== 'VALIDE' ? (
             <Button
-              label={profile.kycStatus === 'REJETE' ? 'Déposer une nouvelle pièce' : 'Vérifier mon identité'}
+              label={profile.kycStatus === 'REJETE' ? 'Déclarer à nouveau ma pièce' : 'Vérifier mon identité'}
               onPress={() => router.push('/kyc')}
               variant={profile.kycStatus === 'EN_ATTENTE' ? 'ghost' : 'primary'}
             />

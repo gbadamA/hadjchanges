@@ -4,6 +4,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { ZodErrorFilter } from './common/zod';
 import { loadEnv } from './config/env';
 
 async function bootstrap(): Promise<void> {
@@ -16,6 +17,7 @@ async function bootstrap(): Promise<void> {
 
   app.use(helmet());
   app.use(cookieParser());
+  app.useGlobalFilters(new ZodErrorFilter());
   app.setGlobalPrefix('api');
   app.enableCors({
     origin: env.corsOrigins,
